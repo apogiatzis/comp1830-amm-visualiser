@@ -209,6 +209,11 @@
   details li { margin-bottom: 4px; }
   .busy { opacity: .6; pointer-events: none; }
   .foot { font-size: 11px; color: var(--navy-2); margin-top: 14px; }
+  .evtable { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  .evtable th { text-align: left; color: var(--navy-2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; padding: 3px; border-bottom: 1px solid #ececf2; }
+  .evtable td { padding: 3px; border-bottom: 1px solid #f1f1f5; vertical-align: top; }
+  .evtable td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  .mono { font-family: var(--mono); font-size: 11.5px; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -306,6 +311,22 @@
       <div class="quote" id="quote"></div>
     </section>
 
+    <section id="sec-evidence">
+      <h2>4 · Evidence for marking</h2>
+      <p class="desc">Every trade you play is logged in this browser, even after a rewind. At the end of the lab, download the log: it is signed with Bob's key from <b>your</b> sandbox, so your tutor can check it is yours and hasn't been changed.</p>
+      <div class="field"><label for="ev-name">Your name</label><input type="text" id="ev-name" autocomplete="name"></div>
+      <div class="field"><label for="ev-id">Student ID</label><input type="text" id="ev-id" autocomplete="off"></div>
+      <label class="check"><input type="checkbox" id="ev-state" checked> Include the sandbox's state (bigger file, lets a tutor load it)</label>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn primary" id="b-download" disabled>⬇ Download evidence</button>
+        <button class="btn" id="b-upload" title="Open an evidence file to check it (tutors)">⬆ Upload evidence…</button>
+        <button class="btn small" id="b-clearlog" disabled title="Start a new log for this sandbox">Clear log</button>
+        <input type="file" id="ev-file" accept=".json,application/json" hidden>
+      </div>
+      <div class="desc" id="ev-count"></div>
+      <div id="ev-result"></div>
+    </section>
+
     <section id="sec-traders">
       <h2>Traders</h2>
       <table class="vals">
@@ -334,7 +355,7 @@
 <script type="module">
 import {
   encodeFunctionData, decodeFunctionResult, decodeAbiParameters, encodeAbiParameters,
-  parseAbi, keccak256, toHex, toBytes, pad, hexToBigInt, decodeErrorResult, getAddress,
+  parseAbi, keccak256, toHex, toBytes, pad, hexToBigInt, decodeErrorResult, getAddress, recoverMessageAddress,
 } from "https://cdn.jsdelivr.net/npm/viem@2.57.16/+esm";
 
 /* ===================================================================== */
@@ -674,6 +695,7 @@ async function processReceipt({ it, rc, idx, block }, running) {
     rec.reason = await revertReason(it);
   }
   S.trades.push(rec);
+  logEvidence(rec, rc);
   return rec;
 }
 
@@ -738,6 +760,8 @@ async function connect() {
     if (check !== FUND.USDC || allow !== MAX) throw new Error("Couldn't set up the traders' balances on this sandbox.");
 
     S.snap = await rpc("evm_snapshot");
+    S.chainId = chainId; S.forkBlock = forkBlock === null ? null : Number(forkBlock);
+    loadEvidence();
     await loadPools(true);
     S.connected = true;
     const blockNo = parseInt(await rpc("eth_blockNumber"), 16);
@@ -748,7 +772,7 @@ async function connect() {
       note += `<div class="note warn">Your sandbox is forked at block ${Number(forkBlock).toLocaleString("en-GB")}, but the worksheet uses block ${LAB_BLOCK.toLocaleString("en-GB")}. Everything works, but your numbers will differ from the sheet's.</div>`;
     }
     $("connectMsg").innerHTML = note;
-    ["b-rewind", "b-play", "b-step", "b-quote", "b-send"].forEach(id => $(id).disabled = false);
+    ["b-rewind", "b-play", "b-step", "b-quote", "b-send", "b-download", "b-clearlog"].forEach(id => $(id).disabled = false);
     await renderTraders();
   } catch (e) {
     console.error(e);
@@ -1484,6 +1508,129 @@ async function renderTraders() {
 }
 
 /* ===================================================================== */
+/*  Evidence: a signed log of every trade, for marking                   */
+/* ===================================================================== */
+
+const EXERCISE = { single: "Ex 2.2", retail: "Ex 2.3", whale: "Ex 3.1", protect: "Ex 3.2", "your-trade": "Your trade (Ex 3.3)",
+  arbitrage: "Lab 6, Ex 1.1", sandwich: "Sandwich (extra)" };
+S.evidence = [];
+const evKey = () => `amm-evidence:${S.chainId}:${S.byName.Bob}`;
+function loadEvidence() {
+  try { S.evidence = JSON.parse(localStorage.getItem(evKey()) || "[]"); } catch { S.evidence = []; }
+  showEvCount();
+}
+function saveEvidence() { try { localStorage.setItem(evKey(), JSON.stringify(S.evidence)); } catch { /* storage full */ } showEvCount(); }
+function showEvCount() {
+  const by = {};
+  for (const t of S.evidence) by[t.exercise] = (by[t.exercise] || 0) + 1;
+  const parts = Object.entries(by).map(([k, v]) => `${k}: ${v}`);
+  $("ev-count").textContent = S.evidence.length ? `${S.evidence.length} trades logged · ${parts.join(" · ")}` : "No trades logged yet.";
+}
+function logEvidence(rec, rc) {
+  const p = POOL[rec.pool], seq = S.seq || "your-trade";
+  S.evidence.push({
+    exercise: EXERCISE[seq] || seq, sequence: seq, at: new Date().toISOString(),
+    block: rec.block, blockHash: rc.blockHash, index: rec.idx, hash: rec.hash,
+    trader: rec.trader, from: S.byName[rec.trader], pool: rec.pool,
+    pay: rec.pay, amountIn: String(rec.amountIn), receive: receiveAsset(p, rec.pay), amountOut: rec.ok ? String(rec.amountOut) : null,
+    minOut: String(rec.minOut ?? 0n), ok: rec.ok, reason: rec.reason || null,
+    spot: rec.spot, price: rec.ok ? rec.price : null, tipGwei: rec.tipGwei,
+  });
+  saveEvidence();
+}
+function evidenceMessage(p, hash) {
+  return `COMP1830 AMM Visualiser evidence\nStudent: ${p.student.name} (${p.student.id})\nSandbox chain ID: ${p.sandbox.chainId}\nTrades: ${p.trades.length}\nHash: ${hash}`;
+}
+function evNote(kind, html) { $("ev-result").innerHTML = `<div class="note ${kind}">${html}</div>`; }
+
+async function downloadEvidence() {
+  const name = $("ev-name").value.trim(), id = $("ev-id").value.trim();
+  if (!name || !id) { evNote("bad", "Enter your name and student ID first."); return; }
+  localStorage.setItem("amm-student", JSON.stringify({ name, id }));
+  setBusy(true);
+  try {
+    const head = await latestBlock();
+    let stateDump = null;
+    if ($("ev-state").checked) { try { stateDump = await rpc("anvil_dumpState"); } catch { stateDump = null; } }
+    const payload = {
+      format: "comp1830-amm-evidence/1", tool: location.origin + location.pathname, created: new Date().toISOString(),
+      student: { name, id },
+      sandbox: { chainId: S.chainId, forkBlock: S.forkBlock, labBlock: LAB_BLOCK, headBlock: Number(hexToBigInt(head.number)), headHash: head.hash,
+        accounts: Object.fromEntries(NAMES.map(n => [n, S.byName[n]])) },
+      trades: S.evidence, stateDump,
+    };
+    const hash = keccak256(toBytes(JSON.stringify(payload)));
+    const message = evidenceMessage(payload, hash);
+    let signature = null;
+    try { signature = await rpc("personal_sign", [toHex(message), S.byName.Bob]); }
+    catch { try { signature = await rpc("eth_sign", [S.byName.Bob, toHex(message)]); } catch { signature = null; } }
+    const file = { payload, hash, signer: S.byName.Bob, message, signature };
+    const blob = new Blob([JSON.stringify(file, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `comp1830-amm-evidence-${id.replace(/[^\w-]+/g, "_")}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+    const kb = Math.round(blob.size / 1024);
+    if (signature) evNote("ok", `<b>Downloaded</b> (${kb} KB, ${payload.trades.length} trades${stateDump ? ", with the sandbox state" : ""}). Signed by Bob, <span class="mono">${S.byName.Bob}</span>, on chain ${S.chainId}. Upload this file to Moodle.`);
+    else evNote("warn", `Downloaded (${kb} KB), but your sandbox wouldn't sign it, so your tutor can't verify it. Tell your tutor.`);
+  } catch (e) { console.error(e); evNote("bad", friendly(e)); }
+  finally { setBusy(false); }
+}
+
+async function uploadEvidence(fileObj) {
+  let f;
+  try { f = JSON.parse(await fileObj.text()); } catch { evNote("bad", "That isn't an evidence file (not valid JSON)."); return; }
+  if (!f?.payload || f.payload.format !== "comp1830-amm-evidence/1") { evNote("bad", "That isn't an AMM Visualiser evidence file."); return; }
+  const P = f.payload, checks = [];
+  const hash = keccak256(toBytes(JSON.stringify(P)));
+  const hashOk = hash === f.hash && f.message === evidenceMessage(P, hash);
+  checks.push([hashOk, hashOk ? "The contents match the signed hash: nothing was changed after signing." : "The contents don't match the signed hash: the file was changed after it was signed."]);
+  let signer = null;
+  if (f.signature) { try { signer = await recoverMessageAddress({ message: f.message, signature: f.signature }); } catch { signer = null; } }
+  const sigOk = !!signer && signer.toLowerCase() === String(f.signer).toLowerCase();
+  checks.push([sigOk, f.signature ? (sigOk ? `The signature is valid, made by <span class="mono">${signer}</span>.` : "The signature is not valid.") : "The file is not signed."]);
+  const bobOk = sigOk && signer.toLowerCase() === String(P.sandbox.accounts?.Bob).toLowerCase();
+  checks.push([bobOk, bobOk ? "The signer is Bob, the sandbox's second test account." : "The signer is not the Bob account listed in the file."]);
+  const allOk = checks.every(c => c[0]);
+  let info = "";
+  if (S.connected) {
+    const same = S.chainId === P.sandbox.chainId && S.byName.Bob?.toLowerCase() === signer?.toLowerCase();
+    info = same ? "<br>ℹ It comes from the sandbox this page is connected to." : `<br>ℹ It comes from a different sandbox than the one this page is connected to (chain ${S.chainId}), as expected when a tutor checks a student's file.`;
+  }
+  const by = {};
+  for (const t of P.trades) (by[t.exercise] ||= []).push(t);
+  const fmtT = t => {
+    const p = POOL[t.pool]; if (!p) return esc(t.pool);
+    const inS = `${fmt(toNum(BigInt(t.amountIn), TOKENS[t.pay].dec))} ${t.pay}`;
+    return t.ok ? `${esc(t.trader)} paid ${inS}, got ${fmt(toNum(BigInt(t.amountOut), TOKENS[t.receive].dec))} ${t.receive} on ${p.title} ${p.venue.split(" ·")[0]}`
+                : `${esc(t.trader)} paid ${inS} on ${p.title} ${p.venue.split(" ·")[0]}: <b>reverted</b> (${esc(t.reason || "")})`;
+  };
+  let rows = "";
+  for (const [ex, ts] of Object.entries(by)) {
+    rows += `<tr><th colspan="2">${esc(ex)} · ${ts.length} trade${ts.length > 1 ? "s" : ""}</th></tr>`;
+    rows += ts.map(t => `<tr><td class="num">${t.block}</td><td>${fmtT(t)}</td></tr>`).join("");
+  }
+  $("ev-result").innerHTML = `
+    <div class="note ${allOk ? "ok" : "bad"}"><b>${allOk ? "Verified" : "Not verified"}.</b> ${checks.map(c => `<br>${c[0] ? "✔" : "✘"} ${c[1]}`).join("")}${info}</div>
+    <div class="kv"><span>Student</span><b>${esc(P.student.name)} · ${esc(P.student.id)}</b></div>
+    <div class="kv"><span>Sandbox chain ID</span><b>${esc(P.sandbox.chainId)}</b></div>
+    <div class="kv"><span>Bob's address</span><b class="mono">${esc(P.sandbox.accounts?.Bob)}</b></div>
+    <div class="kv"><span>Fork block</span><b>${P.sandbox.forkBlock ?? "?"}${P.sandbox.forkBlock && P.sandbox.forkBlock !== LAB_BLOCK ? " (not the lab's)" : ""}</b></div>
+    <div class="kv"><span>Downloaded</span><b>${esc(P.created.replace("T", " ").slice(0, 16))} UTC</b></div>
+    <p class="desc">To confirm the student: open their sandbox from the class on SandboxLab and check that its <b>chain ID</b> (Overview) and <b>Bob</b>'s address (Accounts) match the two above.</p>
+    <table class="evtable"><tr><th>Block</th><th>Trade</th></tr>${rows || '<tr><td colspan="2">No trades.</td></tr>'}</table>
+    ${P.stateDump ? `<div class="btns" style="margin-top:8px"><button class="btn small" id="b-loadstate" ${S.connected ? "" : "disabled"} title="Replace the connected sandbox's state with the student's">Load this state into the connected sandbox</button></div>` : ""}`;
+  const ls = $("b-loadstate");
+  if (ls) ls.onclick = async () => {
+    if (!confirm("Load the student's saved state into the sandbox this page is connected to? This changes that sandbox (use your own, not a student's).")) return;
+    setBusy(true);
+    try { await rpc("anvil_loadState", [P.stateDump]); await loadPools(true); await renderTraders(); ls.textContent = "Loaded: the charts and stats now show the student's pools"; }
+    catch (e) { console.error(e); ls.textContent = `Couldn't load: ${friendly(e)}`; }
+    finally { setBusy(false); }
+  };
+}
+
+/* ===================================================================== */
 /*  Wire up                                                               */
 /* ===================================================================== */
 
@@ -1502,6 +1649,11 @@ $("b-quote").onclick = doQuote;
 $("b-send").onclick = doSend;
 fillTradeForm();
 attachChart("curve"); attachChart("price");
+try { const st = JSON.parse(localStorage.getItem("amm-student") || "null"); if (st) { $("ev-name").value = st.name; $("ev-id").value = st.id; } } catch { /* ignore */ }
+$("b-download").onclick = downloadEvidence;
+$("b-upload").onclick = () => $("ev-file").click();
+$("ev-file").onchange = e => { const f = e.target.files[0]; if (f) uploadEvidence(f); e.target.value = ""; };
+$("b-clearlog").onclick = () => { if (confirm("Delete the trade log for this sandbox from this browser? Download it first if you need it.")) { S.evidence = []; saveEvidence(); } };
 $("rpc").value = sessionStorage.getItem("amm-rpc") || "";
 const qs = new URLSearchParams(location.search);
 selectSeq(SEQUENCES[qs.get("sequence")] ? qs.get("sequence") : "single");
