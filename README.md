@@ -36,27 +36,6 @@ Both charts are interactive: mouse wheel zooms around the cursor (Shift: horizon
 on the curve, x, y and the price at that point; on the price chart, the nearest trade point, its price, trader
 and block. A zoomed view is kept as new trades arrive (⟲ turns amber); switching pool resets it.
 
-## Evidence for marking
-
-*4 · Evidence for marking* keeps an append-only log of every trade (sequence/exercise, block and tx hash,
-trader, pool, amounts, spot and paid price, reverts) in `localStorage`, per sandbox (chain ID + Bob's address),
-so it survives rewinds and page reloads.
-
-- **Download evidence** writes a JSON file: `{ payload, hash, signer, message, signature }`. `payload` holds the
-  student's name and ID, the sandbox (chain ID, fork block, head block and hash, the ten account addresses), the
-  trade log and, optionally, `anvil_dumpState` (≈ 110 KB file for a few trades). `hash` is keccak-256 of
-  `JSON.stringify(payload)`; the sandbox signs an EIP-191 message containing the hash with **Bob's** unlocked key
-  (`personal_sign`, falling back to `eth_sign`).
-- **Upload evidence** recomputes the hash, recovers the signer and checks it is the Bob account in the file. It shows
-  the student, chain ID and Bob's address (to compare with the student's sandbox on SandboxLab) and the trades by
-  exercise. With a page connected to the tutor's own sandbox, **Load this state** calls `anvil_loadState` with the dump.
-- Limits: proves the file came from the holder of that sandbox's key and wasn't changed; it can't stop a skilled
-  student from signing a fabricated log, because the sandbox owner can use the test accounts' keys.
-
-Tested 5 November 2026 on local anvil forks: a genuine file verifies (also from a different, tutor's sandbox); a file
-with one amount changed, or with the student's name changed, fails the hash check; state load reproduces the
-student's pool prices exactly. `personal_sign` and `anvil_dumpState`/`anvil_loadState` not yet tried on SandboxLab.
-
 ## How it works
 
 - On **Connect** the page funds traders 1–9 with USDC and AAVE and sets router allowances by writing token
