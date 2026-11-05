@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMM Visualiser · COMP1830 Blockchain for Fintech</title>
+<meta name="description" content="Play transactions against real Uniswap pools on your own Ethereum fork and watch the reserves, the x·y=k curve and the price move.">
+<style>
+  @font-face { font-family: "Cooper Hewitt"; font-weight: 600; src: url("fonts/cooper-hewitt-600-normal.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "Cooper Hewitt"; font-weight: 700; src: url("fonts/cooper-hewitt-700-normal.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "Public Sans"; font-weight: 400; src: url("fonts/public-sans-400-normal.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "Public Sans"; font-weight: 600; src: url("fonts/public-sans-600-normal.woff2") format("woff2"); font-display: swap; }
+  @font-face { font-family: "Public Sans"; font-weight: 700; src: url("fonts/public-sans-700-normal.woff2") format("woff2"); font-display: swap; }
+
+  :root {
+    /* University of Greenwich palette */
+    --navy: #00033d;
+    --navy-2: #5a5d80;
+    --blue: #0058aa;
+    --bright: #3abff0;
+    --mint: #89e9d7;
+    --teal: #218474;
+    --amber: #ffae00;
+    --red: #cc4b37;
+    --stone: #eeedee;
+    --grey: #cbc9cc;
+    --bg: #f6f7fb;
+    --line: #e3e4ec;
+    --text: #2e2e2e;
+    --heading: "Cooper Hewitt", Aptos, "Segoe UI", Arial, sans-serif;
+    --body: "Public Sans", Aptos, "Segoe UI", Arial, sans-serif;
+    --mono: Consolas, Menlo, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--body); font-size: 14px; line-height: 1.45; color: var(--text);
+    background: var(--bg);
+    display: grid; grid-template-rows: auto 1fr;
+  }
+  button, input, select { font: inherit; }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px;
+    background: var(--navy); color: #fff;
+    border-bottom: 3px solid var(--bright);
+  }
+  header h1 { font-family: var(--heading); font-weight: 700; font-size: 18px; margin: 0; letter-spacing: .01em; }
+  header .sub { font-size: 12px; color: #b9bfe0; letter-spacing: .08em; text-transform: uppercase; }
+  header .spacer { flex: 1; }
+  header a { color: #fff; font-size: 12px; opacity: .8; }
+  .netpill {
+    font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.12);
+    font-family: var(--mono); white-space: nowrap;
+  }
+  .netpill.ok { background: rgba(137,233,215,.2); color: var(--mint); }
+
+  /* ---------- Layout ---------- */
+  main { display: grid; grid-template-columns: 1fr 410px; min-height: 0; }
+  #stage { padding: 16px 18px 28px; overflow-y: auto; min-width: 0; }
+  aside {
+    background: #fff; border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 16px 18px 28px;
+  }
+  @media (max-width: 1100px) {
+    html, body { height: auto; }
+    main { grid-template-columns: 1fr; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+
+  /* ---------- Pool tabs ---------- */
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tab {
+    border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+    text-align: left; min-width: 200px; color: var(--navy);
+  }
+  .tab b { font-family: var(--heading); font-size: 14px; display: block; }
+  .tab small { color: var(--navy-2); font-size: 11.5px; }
+  .tab .p { font-family: var(--mono); font-size: 12px; margin-top: 2px; display: block; }
+  .tab.active { border-color: var(--navy); box-shadow: inset 0 -3px 0 var(--bright); }
+  .tab .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 1400px) { .grid2 { grid-template-columns: 1fr; } }
+  .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+    box-shadow: 0 2px 10px rgba(0,3,61,.04); min-width: 0;
+  }
+  .cardHead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .cardHead .hint { font-size: 12px; color: var(--navy-2); flex: 1; }
+  svg.chart { width: 100%; height: auto; display: block; touch-action: none; cursor: grab; user-select: none; }
+  svg.chart.dragging { cursor: grabbing; }
+  svg.chart .hov text { font-family: var(--mono); font-size: 11px; fill: var(--navy); }
+  .zoomBtns { display: flex; gap: 4px; }
+  .zoomBtns button { border: 1px solid #d6d8e4; background: #fff; color: var(--navy); border-radius: 5px; width: 26px; height: 24px; cursor: pointer; font-weight: 700; padding: 0; }
+  .zoomBtns button:hover { border-color: var(--blue); color: var(--blue); }
+  .zoomBtns button.zoomed { background: var(--amber); border-color: var(--amber); color: var(--navy); }
+  svg.chart text { font-family: var(--body); font-size: 11px; fill: var(--navy-2); }
+  svg.chart .axis { stroke: #c9cbd8; stroke-width: 1; }
+  svg.chart .grid { stroke: #eef0f5; stroke-width: 1; }
+  svg.chart .lbl { font-family: var(--mono); font-size: 11px; fill: var(--navy); }
+  svg.chart .big { font-family: var(--heading); font-weight: 700; font-size: 12px; fill: var(--navy); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  .stat span { display: block; font-size: 11px; color: var(--navy-2); text-transform: uppercase; letter-spacing: .06em; }
+  .stat b { font-family: var(--mono); font-weight: 600; color: var(--navy); font-size: 14px; }
+  .stat small { display: block; font-size: 11.5px; color: var(--navy-2); }
+
+  table.tape { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tape th {
+    text-align: left; font-weight: 600; color: var(--navy-2); font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    padding: 0 6px 6px; border-bottom: 1px solid #ececf2; white-space: nowrap;
+  }
+  table.tape td { padding: 6px; border-bottom: 1px solid #f1f1f5; vertical-align: top; }
+  table.tape td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  table.tape tr.bad td { color: var(--red); }
+  table.tape tr.new td { animation: flash 1.2s ease; }
+  @keyframes flash { from { background: #e6f6fd; } to { background: transparent; } }
+  .tapeWrap { max-height: 360px; overflow-y: auto; }
+  .empty { color: var(--navy-2); font-size: 12.5px; padding: 8px 0; }
+  .hash { font-family: var(--mono); font-size: 11px; color: var(--blue); cursor: pointer; border: 0; background: none; padding: 0; }
+
+  /* ---------- Panel ---------- */
+  section { padding: 14px 0; border-bottom: 1px solid #ececf2; }
+  section:first-child { padding-top: 0; }
+  section:last-child { border-bottom: 0; }
+  h2 {
+    font-family: var(--heading); font-weight: 700; font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--navy); margin: 0 0 10px;
+  }
+  .card h2 { margin: 0; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn {
+    border: 1px solid #d6d8e4; background: #fff; color: var(--navy);
+    padding: 7px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;
+  }
+  .btn:hover { border-color: var(--blue); color: var(--blue); }
+  .btn.primary { background: var(--navy); border-color: var(--navy); color: #fff; min-width: 84px; }
+  .btn.primary:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn.small { padding: 3px 8px; font-size: 11.5px; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .field { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; }
+  .field > label { min-width: 110px; color: var(--navy-2); }
+  .field input[type=text], .field input[type=number], .field select, input.rpc {
+    flex: 1; min-width: 0; border: 1px solid #d6d8e4; border-radius: 6px; padding: 6px 8px; background: #fff; color: var(--navy);
+  }
+  input.rpc { width: 100%; font-family: var(--mono); font-size: 12px; }
+  .desc { font-size: 12.5px; color: var(--navy-2); margin: 8px 0 0; }
+  .note {
+    font-size: 12px; color: var(--navy-2); background: var(--bg); border-left: 3px solid var(--bright);
+    padding: 7px 10px; border-radius: 4px; margin-top: 10px;
+  }
+  .note.warn { border-left-color: var(--amber); background: #fff8e8; color: #6b4a00; }
+  .note.bad { border-left-color: var(--red); background: #fbe9e6; color: #8a2a1b; }
+  .note.ok { border-left-color: var(--teal); background: #e9f7f3; color: #145247; }
+  .chip {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  }
+  .chip.ok { background: #e3f6f1; color: var(--teal); }
+  .chip.bad { background: #fbe9e6; color: var(--red); }
+  .chip.warn { background: #fff4dc; color: #9a6400; }
+  .chip.info { background: #e6f2fb; color: var(--blue); }
+
+  .seqs { display: grid; gap: 6px; }
+  .seq {
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; background: #fff; text-align: left; color: var(--text);
+  }
+  .seq b { font-family: var(--heading); color: var(--navy); font-size: 13.5px; }
+  .seq code { font-family: var(--mono); font-size: 11px; color: var(--navy-2); margin-left: 6px; }
+  .seq small { display: block; color: var(--navy-2); font-size: 12px; }
+  .seq.active { border-color: var(--navy); background: #f3f5fb; }
+  .story { margin-top: 10px; display: grid; gap: 6px; }
+  .story div {
+    font-size: 12.5px; padding: 7px 10px; border-radius: 6px; border-left: 3px solid var(--grey); background: var(--bg);
+  }
+  .story div.now { border-left-color: var(--blue); background: #eef5fc; }
+  .story div.done { border-left-color: var(--teal); }
+  .story div.result { border-left-color: var(--teal); background: #e9f7f3; }
+  .story div.bad { border-left-color: var(--red); background: #fbe9e6; }
+  .story b { color: var(--navy); }
+  .story table { border-collapse: collapse; margin-top: 4px; width: 100%; }
+  .story td, .story th { padding: 2px 4px; font-size: 12px; text-align: left; }
+  .story td.num { font-family: var(--mono); text-align: right; }
+
+  .pool-list { display: grid; gap: 5px; font-size: 12.5px; }
+  .pending { display: flex; gap: 8px; align-items: baseline; padding: 5px 8px; border-radius: 6px; background: #fff8e8; border: 1px dashed #e8c46a; }
+  .pending.mined { background: #e9f7f3; border: 1px solid #b9e3d8; }
+  .pending.failed { background: #fbe9e6; border: 1px solid #efc1b8; }
+  .pending .pos { font-family: var(--mono); font-weight: 700; color: var(--navy); min-width: 16px; }
+  .pending .tip { font-family: var(--mono); font-size: 11px; color: var(--navy-2); margin-left: auto; white-space: nowrap; }
+
+  table.vals { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.vals th { text-align: left; font-weight: 600; color: var(--navy-2); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; padding: 0 3px 5px; border-bottom: 1px solid #ececf2; }
+  table.vals td { padding: 4px 3px; border-bottom: 1px solid #f1f1f5; }
+  table.vals td.num { font-family: var(--mono); text-align: right; white-space: nowrap; }
+  .name { font-family: var(--heading); font-weight: 700; color: var(--navy); }
+  .role { color: var(--navy-2); font-size: 11px; }
+  .quote { margin-top: 8px; font-size: 12.5px; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; margin-top: 3px; }
+  .kv b { font-family: var(--mono); color: var(--navy); font-weight: 600; text-align: right; }
+  label.check { display: flex; gap: 8px; align-items: center; font-size: 12.5px; margin-top: 8px; color: var(--navy); }
+  details { font-size: 12.5px; color: var(--navy-2); }
+  details summary { cursor: pointer; font-weight: 600; color: var(--navy); }
+  details ul { padding-left: 18px; margin: 8px 0 0; }
+  details li { margin-bottom: 4px; }
+  .busy { opacity: .6; pointer-events: none; }
+  .foot { font-size: 11px; color: var(--navy-2); margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="sub">COMP1830 · Blockchain for Fintech · Lab 5</div>
+    <h1>AMM Visualiser</h1>
+  </div>
+  <div class="spacer"></div>
+  <span class="netpill" id="netpill">Not connected</span>
+  <a href="#about">About this page</a>
+</header>
+
+<main>
+  <div id="stage">
+    <div class="tabs" id="tabs"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="cardHead"><h2>Bonding curve</h2><span class="hint" id="curveHint">x · y = k</span><span class="zoomBtns" data-chart="curve"><button data-z="in" title="Zoom in">+</button><button data-z="out" title="Zoom out">−</button><button data-z="reset" title="Reset view (or double-click the chart)">⟲</button></span></div>
+        <svg class="chart" id="curve" viewBox="0 0 620 360" role="img" aria-label="The pool's bonding curve"></svg>
+      </div>
+      <div class="card">
+        <div class="cardHead"><h2>Price</h2><span class="hint" id="priceHint"></span><span class="zoomBtns" data-chart="price"><button data-z="in" title="Zoom in">+</button><button data-z="out" title="Zoom out">−</button><button data-z="reset" title="Reset view (or double-click the chart)">⟲</button></span></div>
+        <svg class="chart" id="price" viewBox="0 0 620 360" role="img" aria-label="Price after each trade"></svg>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="card">
+      <div class="cardHead"><h2>Trade tape</h2><span class="hint">Charts: scroll to zoom (Shift: horizontal only), drag to pan, double-click to reset. Tape: every swap played on your fork, newest first. Click a hash to copy it, then find it on SandboxLab → Transactions.</span></div>
+      <div class="tapeWrap">
+        <table class="tape">
+          <thead><tr>
+            <th>#</th><th>Block</th><th>Trader</th><th>Pool</th><th>Trade</th>
+            <th style="text-align:right" title="The pool's price just before this trade">Spot before</th>
+            <th style="text-align:right" title="What the trader actually got per unit">Price paid</th>
+            <th style="text-align:right" title="How much worse than the spot price: the fee plus the price impact">vs spot</th>
+            <th>Tx</th>
+          </tr></thead>
+          <tbody id="tape"></tbody>
+        </table>
+        <div class="empty" id="tapeEmpty">No trades yet. Connect to your fork, then play a sequence or make your own trade.</div>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <section id="sec-connect">
+      <h2>1 · Connect to your fork</h2>
+      <input class="rpc" id="rpc" type="text" placeholder="Paste your sandbox's RPC URL (Overview → RPC URL)" autocomplete="off" spellcheck="false">
+      <div class="btns" style="margin-top:8px">
+        <button class="btn primary" id="b-connect">Connect</button>
+        <button class="btn" id="b-rewind" disabled title="Undo every trade since you connected">⟲ Rewind to start</button>
+      </div>
+      <div id="connectMsg"></div>
+      <div class="note">This page runs only in your browser. It sends your RPC URL to nobody except your own sandbox, and it never asks for a private key: the sandbox signs for its test accounts.</div>
+    </section>
+
+    <section id="sec-seq">
+      <h2>2 · Play a sequence</h2>
+      <div class="seqs" id="seqs"></div>
+      <label class="check"><input type="checkbox" id="fromStart" checked> Start each sequence from the start point (rewind first)</label>
+      <div class="field">
+        <label for="speed">Speed</label>
+        <select id="speed"><option value="2600">Slow</option><option value="1300" selected>Normal</option><option value="350">Fast</option></select>
+      </div>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn primary" id="b-play" disabled>▶ Play</button>
+        <button class="btn" id="b-step" disabled>Step</button>
+        <button class="btn" id="b-stop" disabled>■ Stop</button>
+      </div>
+      <div class="story" id="story"></div>
+    </section>
+
+    <section id="sec-mempool">
+      <h2>Mempool &amp; last block</h2>
+      <div class="pool-list" id="mempool"><div class="empty">Transactions waiting to be mined appear here, then the order the block put them in.</div></div>
+    </section>
+
+    <section id="sec-trade">
+      <h2>3 · Your trade</h2>
+      <div class="field"><label for="t-trader">Trader</label><select id="t-trader"></select></div>
+      <div class="field"><label for="t-pool">Pool</label><select id="t-pool"></select></div>
+      <div class="field"><label for="t-pay">You pay</label><select id="t-pay"></select></div>
+      <div class="field"><label for="t-amount">Amount</label><input type="number" id="t-amount" min="0" step="any" value="10"></div>
+      <div class="field"><label for="t-tol">Slippage tolerance</label><input type="number" id="t-tol" min="0" max="100" step="0.1" value="0.5"><span>%</span></div>
+      <label class="check" id="t-carol-row" hidden><input type="checkbox" id="t-carol"> Carol's bot is watching the mempool (front-running)</label>
+      <div class="btns" style="margin-top:10px">
+        <button class="btn" id="b-quote" disabled>Quote</button>
+        <button class="btn primary" id="b-send" disabled>Send trade</button>
+      </div>
+      <div class="quote" id="quote"></div>
+    </section>
+
+    <section id="sec-traders">
+      <h2>Traders</h2>
+      <table class="vals">
+        <thead><tr><th>Who</th><th style="text-align:right">ETH</th><th style="text-align:right">USDC</th><th style="text-align:right">AAVE</th><th style="text-align:right">WETH</th></tr></thead>
+        <tbody id="traders"><tr><td colspan="5" class="empty">Connect to see the traders.</td></tr></tbody>
+      </table>
+    </section>
+
+    <section id="about">
+      <h2>About this page</h2>
+      <details open>
+        <summary>What is real and what is simplified</summary>
+        <ul>
+          <li>Every trade is a real transaction on your fork, sent to the real Uniswap contracts. The sandbox signs it for one of its test accounts (Alice, Bob, Carol, …).</li>
+          <li>When you connect, the page gives each trader 5,000,000 USDC and 5,000 AAVE and lets the Uniswap routers spend them, by writing the token contracts' storage, the same trick as SandboxLab's <i>Fund wallet</i>. It then takes a snapshot: the start point.</li>
+          <li>For Uniswap v3 the curve uses the pool's <i>virtual</i> reserves, which follow x · y = k only inside the current price range. The stats also show the tokens the pool really holds.</li>
+          <li>To put several transactions in one block, the page switches auto-mining off, sends them, mines one block, and switches it back on. The block orders them by priority fee, as a block builder would.</li>
+          <li>Carol's front-running bot only watches the Uniswap v2 pools. Gas costs are shown, but the bot ignores them when it picks its trade size.</li>
+        </ul>
+      </details>
+      <p class="foot">COMP1830 Blockchain for Fintech · University of Greenwich. Uses <a href="https://viem.sh">viem</a> from jsDelivr.</p>
+    </section>
+  </aside>
+</main>
+
+<script type="module">
+import {
+  encodeFunctionData, decodeFunctionResult, decodeAbiParameters, encodeAbiParameters,
+  parseAbi, keccak256, toHex, toBytes, pad, hexToBigInt, decodeErrorResult, getAddress,
+} from "https://cdn.jsdelivr.net/npm/viem@2.57.16/+esm";
+
+/* ===================================================================== */
+/*  Configuration                                                         */
+/* ===================================================================== */
+
+const LAB_BLOCK = 26344800;           // the fork block given in the worksheet
+const ADDR = {
+  WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  AAVE: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
+  V2_ROUTER: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+  V3_ROUTER: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",   // SwapRouter02
+  V3_QUOTER: "0x61fFE014bA17989E743c5F6cB21bF9697530B21e",   // QuoterV2
+};
+// Storage slots of the balance and allowance mappings (found on the fork).
+const TOKENS = {
+  ETH:  { sym: "ETH",  dec: 18 },
+  WETH: { sym: "WETH", dec: 18, addr: ADDR.WETH, bal: 3n, allow: 4n },
+  USDC: { sym: "USDC", dec: 6,  addr: ADDR.USDC, bal: 9n, allow: 10n },
+  AAVE: { sym: "AAVE", dec: 18, addr: ADDR.AAVE, bal: 0n, allow: 1n },
+};
+// In all three pools token0 is the token and token1 is WETH.
+const POOLS = [
+  { id: "v2usdc", kind: "v2", addr: "0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc", token: "USDC",
+    base: "ETH", quote: "USDC", fee: 0.003, colour: "#0058aa",
+    title: "ETH / USDC", venue: "Uniswap v2 · 0.3% fee", blurb: "The textbook pool: its two reserves are exactly x and y." },
+  { id: "v3usdc", kind: "v3", addr: "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640", token: "USDC", feeTier: 500,
+    base: "ETH", quote: "USDC", fee: 0.0005, colour: "#218474",
+    title: "ETH / USDC", venue: "Uniswap v3 · 0.05% fee", blurb: "The deep pool people really use: concentrated liquidity." },
+  { id: "v2aave", kind: "v2", addr: "0xDFC14d2Af169B0D36C4EFF567Ada9b2E0CAE044f", token: "AAVE",
+    base: "AAVE", quote: "ETH", fee: 0.003, colour: "#cc4b37",
+    title: "AAVE / ETH", venue: "Uniswap v2 · thin pool", blurb: "A small pool: watch what one trade does to it." },
+];
+const POOL = Object.fromEntries(POOLS.map(p => [p.id, p]));
+const NAMES = ["Alice", "Bob", "Carol", "Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan", "Judy"];
+const ROLES = { Alice: "not used here", Bob: "you", Carol: "arbitrage & MEV bot", Judy: "whale" };
+for (const n of ["Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan"]) ROLES[n] = "retail trader";
+const FUND = { USDC: 5_000_000n * 10n ** 6n, AAVE: 5_000n * 10n ** 18n };
+const GWEI = 10n ** 9n;
+const MAX = (1n << 256n) - 1n;
+
+const ABI = parseAbi([
+  "function getReserves() view returns (uint112, uint112, uint32)",
+  "function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)",
+  "function liquidity() view returns (uint128)",
+  "function token0() view returns (address)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address, address) view returns (uint256)",
+  "function swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline) payable returns (uint256[])",
+  "function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[])",
+  "struct ExactInputSingleParams { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; }",
+  "function exactInputSingle(ExactInputSingleParams params) payable returns (uint256)",
+  "struct QuoteParams { address tokenIn; address tokenOut; uint256 amountIn; uint24 fee; uint160 sqrtPriceLimitX96; }",
+  "function quoteExactInputSingle(QuoteParams params) returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 ticksCrossed, uint256 gasEstimate)",
+]);
+const TOPIC = {
+  v2Swap: keccak256(toBytes("Swap(address,uint256,uint256,uint256,uint256,address)")),
+  v2Sync: keccak256(toBytes("Sync(uint112,uint112)")),
+  v3Swap: keccak256(toBytes("Swap(address,address,int256,int256,uint160,uint128,int24)")),
+};
+
+/* ===================================================================== */
+/*  State                                                                 */
+/* ===================================================================== */
+
+const S = {
+  url: null, accounts: [], names: {}, byName: {}, snap: null, connected: false,
+  pools: {},          // id -> current state
+  hist: {},           // id -> [{t, x, y, price}]
+  t: 0,               // global step counter (one per pool change)
+  trades: [],         // trade records
+  pending: [],        // transactions waiting in the mempool
+  lastBlock: null,    // {number, order: [...]}
+  holding: false, prevAutomine: true,
+  selected: "v2usdc",
+  seq: null, seqSteps: [], seqIdx: 0, playing: false, stopFlag: false, busy: false,
+};
+
+/* ===================================================================== */
+/*  Small helpers                                                         */
+/* ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function toNum(raw, dec) { return Number(raw) / 10 ** dec; }
+function toRaw(num, dec) {
+  const [i, f = ""] = String(num).split(".");
+  return BigInt(i || "0") * 10n ** BigInt(dec) + BigInt((f + "0".repeat(dec)).slice(0, dec) || "0");
+}
+function fmt(n, dp) {
+  if (!isFinite(n)) return "–";
+  if (dp === undefined) dp = Math.abs(n) >= 1000 ? 0 : Math.abs(n) >= 100 ? 1 : Math.abs(n) >= 1 ? 2 : Math.abs(n) >= 0.01 ? 4 : 6;
+  return n.toLocaleString("en-GB", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function fmtAmt(raw, sym, dp) { return `${fmt(toNum(raw, TOKENS[sym].dec), dp)} ${sym}`; }
+function fmtPrice(p, pool, dp) {
+  const P = POOL[pool];
+  return `${fmt(p, dp ?? (P.quote === "USDC" ? 2 : 5))} ${P.quote}`;
+}
+function pct(a) { return `${fmt(a * 100, 2)}%`; }
+function shortHash(h) { return h ? `${h.slice(0, 8)}…${h.slice(-4)}` : ""; }
+
+/* ===================================================================== */
+/*  JSON-RPC                                                              */
+/* ===================================================================== */
+
+let rpcId = 1;
+async function rpc(method, params = []) {
+  const res = await fetch(S.url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: rpcId++, method, params }),
+  });
+  if (!res.ok) throw new Error(`${method}: HTTP ${res.status}`);
+  const j = await res.json();
+  if (j.error) { const e = new Error(j.error.message || JSON.stringify(j.error)); e.data = j.error.data; throw e; }
+  return j.result;
+}
+async function call(to, functionName, args = [], block = "latest") {
+  const data = encodeFunctionData({ abi: ABI, functionName, args });
+  const out = await rpc("eth_call", [{ to, data }, block]);
+  return decodeFunctionResult({ abi: ABI, functionName, data: out });
+}
+const ethBalance = async a => hexToBigInt(await rpc("eth_getBalance", [a, "latest"]));
+const tokenBalance = (sym, a) => call(TOKENS[sym].addr, "balanceOf", [a]);
+
+/* ===================================================================== */
+/*  Pool state                                                            */
+/* ===================================================================== */
+
+// Returns { tokenRaw, ethRaw, x, y, price, k, tvl, ... } with x = base reserve, y = quote reserve.
+async function readPool(p) {
+  if (p.kind === "v2") {
+    const [r0, r1] = await call(p.addr, "getReserves");
+    return v2State(p, r0, r1);
+  }
+  const [s0, L, bt, be] = await Promise.all([
+    call(p.addr, "slot0"), call(p.addr, "liquidity"),
+    tokenBalance(p.token, p.addr), tokenBalance("WETH", p.addr),
+  ]);
+  return v3State(p, s0[0], L, bt, be);
+}
+function v2State(p, r0, r1) {
+  const tok = toNum(r0, TOKENS[p.token].dec), eth = toNum(r1, 18);
+  const x = p.base === "ETH" ? eth : tok, y = p.base === "ETH" ? tok : eth;
+  return { r0, r1, x, y, price: y / x, k: x * y, tokH: tok, ethH: eth };
+}
+function v3State(p, sqrtP, L, balTok, balEth) {
+  const s = Number(sqrtP) / 2 ** 96;                       // sqrt(WETH raw / USDC raw)
+  const tokV = Number(L) / s / 10 ** TOKENS[p.token].dec;  // virtual reserves
+  const ethV = Number(L) * s / 1e18;
+  return {
+    sqrtP, L, balTok, balEth, x: ethV, y: tokV, price: tokV / ethV, k: ethV * tokV,
+    tokH: toNum(balTok, TOKENS[p.token].dec), ethH: toNum(balEth, 18),
+  };
+}
+function ethUsd() { return S.pools.v3usdc ? S.pools.v3usdc.price : 0; }
+function tvlUsd(id) {
+  const st = S.pools[id]; if (!st) return 0;
+  const tokUsd = POOL[id].token === "USDC" ? st.tokH : st.tokH * (st.ethH / st.tokH) * ethUsd();
+  return tokUsd + st.ethH * ethUsd();
+}
+function pushHist(id) {
+  const st = S.pools[id];
+  S.hist[id].push({ t: ++S.t, x: st.x, y: st.y, price: st.price });
+}
+
+/* ===================================================================== */
+/*  Uniswap v2 maths (exactly what the router does)                      */
+/* ===================================================================== */
+
+function v2Out(amountIn, rIn, rOut) {
+  const inFee = amountIn * 997n;
+  return (inFee * rOut) / (rIn * 1000n + inFee);
+}
+// Simulate a swap on reserves {r0: token, r1: WETH}. pay = "ETH" or the token.
+function v2Sim(st, pay, amount) {
+  if (pay === "ETH") { const out = v2Out(amount, st.r1, st.r0); return { out, st: { r0: st.r0 - out, r1: st.r1 + amount } }; }
+  const out = v2Out(amount, st.r0, st.r1); return { out, st: { r0: st.r0 + amount, r1: st.r1 - out } };
+}
+function receiveAsset(p, pay) {
+  if (pay === "ETH") return p.token;
+  return p.kind === "v3" ? "WETH" : "ETH";
+}
+async function quoteTrade(pid, pay, amount) {
+  const p = POOL[pid];
+  if (p.kind === "v2") {
+    const [r0, r1] = await call(p.addr, "getReserves");
+    return v2Sim({ r0, r1 }, pay, amount).out;
+  }
+  const tokenIn = pay === "ETH" ? ADDR.WETH : TOKENS[p.token].addr;
+  const tokenOut = pay === "ETH" ? TOKENS[p.token].addr : ADDR.WETH;
+  const [out] = await call(ADDR.V3_QUOTER, "quoteExactInputSingle",
+    [{ tokenIn, tokenOut, amountIn: amount, fee: p.feeTier, sqrtPriceLimitX96: 0n }]);
+  return out;
+}
+// Spot price and the price a trade gets, both as quote per base.
+function execPrice(p, pay, amountIn, amountOut) {
+  const inSym = pay, outSym = receiveAsset(p, pay);
+  const a = toNum(amountIn, TOKENS[inSym].dec), b = toNum(amountOut, TOKENS[outSym].dec);
+  const paysBase = (p.base === "ETH") === (pay === "ETH");
+  return paysBase ? b / a : a / b;  // quote per base
+}
+
+/* ===================================================================== */
+/*  Sending transactions                                                  */
+/* ===================================================================== */
+
+async function latestBlock() { return rpc("eth_getBlockByNumber", ["latest", false]); }
+
+async function buildTx(spec) {
+  const p = POOL[spec.pool], from = S.byName[spec.trader];
+  const blk = await latestBlock();
+  const deadline = hexToBigInt(blk.timestamp) + 86400n;
+  let to, data, value = 0n;
+  if (p.kind === "v2") {
+    to = ADDR.V2_ROUTER;
+    if (spec.pay === "ETH") {
+      data = encodeFunctionData({ abi: ABI, functionName: "swapExactETHForTokens", args: [spec.minOut, [ADDR.WETH, TOKENS[p.token].addr], from, deadline] });
+      value = spec.amount;
+    } else {
+      data = encodeFunctionData({ abi: ABI, functionName: "swapExactTokensForETH", args: [spec.amount, spec.minOut, [TOKENS[p.token].addr, ADDR.WETH], from, deadline] });
+    }
+  } else {
+    to = ADDR.V3_ROUTER;
+    const tokenIn = spec.pay === "ETH" ? ADDR.WETH : TOKENS[p.token].addr;
+    const tokenOut = spec.pay === "ETH" ? TOKENS[p.token].addr : ADDR.WETH;
+    data = encodeFunctionData({ abi: ABI, functionName: "exactInputSingle", args: [{
+      tokenIn, tokenOut, fee: p.feeTier, recipient: from, amountIn: spec.amount,
+      amountOutMinimum: spec.minOut, sqrtPriceLimitX96: 0n }] });
+    if (spec.pay === "ETH") value = spec.amount;
+  }
+  const baseFee = blk.baseFeePerGas ? hexToBigInt(blk.baseFeePerGas) : GWEI;
+  const tip = BigInt(Math.round((spec.tip ?? 1) * 1e9));
+  return { from, to, data, value, gas: 600000n, tip, maxFee: baseFee * 2n + tip + GWEI };
+}
+
+const nonces = {};
+async function nextNonce(addr) {
+  if (S.holding && nonces[addr] !== undefined) return nonces[addr]++;
+  const n = hexToBigInt(await rpc("eth_getTransactionCount", [addr, "pending"]));
+  nonces[addr] = n + 1n;
+  return n;
+}
+
+// Put a trade in the mempool (or mine it straight away if we're not holding blocks).
+async function send(spec) {
+  spec.minOut = spec.minOut ?? 0n;
+  const tx = await buildTx(spec);
+  const nonce = await nextNonce(tx.from);
+  const hash = await rpc("eth_sendTransaction", [{
+    from: tx.from, to: tx.to, data: tx.data, value: toHex(tx.value), gas: toHex(tx.gas),
+    maxPriorityFeePerGas: toHex(tx.tip), maxFeePerGas: toHex(tx.maxFee), nonce: toHex(nonce),
+  }]);
+  const item = { ...spec, hash, tx, nonce, tipGwei: Number(tx.tip) / 1e9 };
+  S.pending.push(item);
+  renderMempool();
+  if (!S.holding) await mine();
+  return item;
+}
+
+async function hold() {
+  if (S.holding) return;
+  try { S.prevAutomine = await rpc("anvil_getAutomine"); } catch { S.prevAutomine = true; }
+  await rpc("evm_setAutomine", [false]);
+  S.holding = true;
+  for (const k in nonces) delete nonces[k];
+}
+async function release() {
+  if (!S.holding) return;
+  S.holding = false;
+  try { await rpc("evm_setAutomine", [S.prevAutomine !== false]); } catch { /* ignore */ }
+}
+
+// Mine one block with everything pending, then read what happened, in block order.
+async function mine() {
+  const before = {};
+  for (const p of POOLS) before[p.id] = { ...S.pools[p.id] };
+  if (S.holding) await rpc("anvil_mine", ["0x1"]);
+  const mined = [];
+  for (const it of S.pending) {
+    let rc = null;
+    for (let i = 0; i < 50 && !rc; i++) { rc = await rpc("eth_getTransactionReceipt", [it.hash]); if (!rc) await sleep(100); }
+    if (!rc) throw new Error(`Transaction ${shortHash(it.hash)} was not mined.`);
+    mined.push({ it, rc, idx: Number(hexToBigInt(rc.transactionIndex)), block: Number(hexToBigInt(rc.blockNumber)) });
+  }
+  mined.sort((a, b) => a.block - b.block || a.idx - b.idx);
+  S.pending = [];
+  const records = [];
+  const running = before;
+  for (const m of mined) records.push(await processReceipt(m, running));
+  // Refresh from the chain (the source of truth).
+  for (const p of POOLS) {
+    const changed = records.some(r => r.pool === p.id && r.ok);
+    S.pools[p.id] = await readPool(p);
+    if (changed && !records.some(r => r.pool === p.id && r.histPushed)) pushHist(p.id);
+  }
+  S.lastBlock = { number: mined.length ? mined[mined.length - 1].block : null, items: records };
+  renderAll();
+  await renderTraders();
+  return records;
+}
+
+async function processReceipt({ it, rc, idx, block }, running) {
+  const p = POOL[it.pool];
+  const ok = rc.status === "0x1";
+  const gasEth = toNum(hexToBigInt(rc.gasUsed) * hexToBigInt(rc.effectiveGasPrice || "0x0"), 18);
+  const rec = { n: S.trades.length + 1, block, idx, trader: it.trader, pool: it.pool, pay: it.pay, amountIn: it.amount,
+    ok, hash: it.hash, tipGwei: it.tipGwei, gasEth, label: it.label, minOut: it.minOut, spot: running[it.pool].price };
+  if (ok) {
+    const logs = rc.logs.filter(l => l.address.toLowerCase() === p.addr.toLowerCase());
+    if (p.kind === "v2") {
+      const sw = logs.find(l => l.topics[0] === TOPIC.v2Swap);
+      const [a0In, a1In, a0Out, a1Out] = decodeAbiParameters([{ type: "uint256" }, { type: "uint256" }, { type: "uint256" }, { type: "uint256" }], sw.data);
+      rec.amountIn = it.pay === "ETH" ? a1In : a0In;
+      rec.amountOut = it.pay === "ETH" ? a0Out : a1Out;
+      const sy = logs.find(l => l.topics[0] === TOPIC.v2Sync);
+      const [r0, r1] = decodeAbiParameters([{ type: "uint112" }, { type: "uint112" }], sy.data);
+      running[it.pool] = v2State(p, r0, r1);
+    } else {
+      const sw = logs.find(l => l.topics[0] === TOPIC.v3Swap);
+      const [a0, a1, sqrtP, L] = decodeAbiParameters([{ type: "int256" }, { type: "int256" }, { type: "uint160" }, { type: "uint128" }, { type: "int24" }], sw.data);
+      rec.amountIn = it.pay === "ETH" ? a1 : a0;
+      rec.amountOut = it.pay === "ETH" ? -a0 : -a1;
+      const prev = running[it.pool];
+      running[it.pool] = v3State(p, sqrtP, L,
+        prev.balTok + (a0), prev.balEth + (a1));
+    }
+    rec.price = execPrice(p, it.pay, rec.amountIn, rec.amountOut);
+    rec.vsSpot = Math.abs(rec.price - rec.spot) / rec.spot;
+    rec.after = running[it.pool].price;
+    // Record the pool's state after this trade (several trades in one block each get a point).
+    S.pools[it.pool] = running[it.pool];
+    pushHist(it.pool); rec.histPushed = true;
+  } else {
+    rec.reason = await revertReason(it);
+  }
+  S.trades.push(rec);
+  return rec;
+}
+
+async function revertReason(it) {
+  try {
+    await rpc("eth_call", [{ from: it.tx.from, to: it.tx.to, data: it.tx.data, value: toHex(it.tx.value), gas: toHex(it.tx.gas) }, "latest"]);
+    return "reverted";
+  } catch (e) {
+    const data = typeof e.data === "string" ? e.data : e.data?.data;
+    if (data && data.startsWith("0x08c379a0")) {
+      try { return decodeErrorResult({ abi: parseAbi(["error Error(string)"]), data }).args[0]; } catch { /* fall through */ }
+    }
+    const m = /revert(?:ed)?:?\s*(.*)$/i.exec(e.message || "");
+    return m && m[1] ? m[1] : (e.message || "reverted");
+  }
+}
+
+/* ===================================================================== */
+/*  Connect, fund, snapshot, rewind                                       */
+/* ===================================================================== */
+
+function mapSlot(addr, slot) {
+  return keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [addr, slot]));
+}
+function nestedSlot(owner, spender, slot) {
+  return keccak256(encodeAbiParameters([{ type: "address" }, { type: "bytes32" }], [spender, mapSlot(owner, slot)]));
+}
+async function setStorage(token, slot, value) {
+  await rpc("anvil_setStorageAt", [token, slot, pad(toHex(value), { size: 32 })]);
+}
+
+async function connect() {
+  const url = $("rpc").value.trim();
+  if (!/^https?:\/\//.test(url)) { msg("bad", "Paste the full RPC URL from your sandbox's Overview page (it starts with https://)."); return; }
+  S.url = url; sessionStorage.setItem("amm-rpc", url);
+  setBusy(true);
+  msg("", "Connecting…");
+  try {
+    const chainId = parseInt(await rpc("eth_chainId"), 16);
+    const code = await rpc("eth_getCode", [ADDR.V2_ROUTER, "latest"]);
+    if (code === "0x") throw new Error("This network has no Uniswap contracts. Create your sandbox as a fork of Ethereum Mainnet.");
+    let forkBlock = null;
+    try { const info = await rpc("anvil_nodeInfo"); forkBlock = info?.forkConfig?.forkBlockNumber ?? null; } catch { /* not anvil */ }
+    const accounts = await rpc("eth_accounts");
+    if (accounts.length < 10) throw new Error("The page needs the sandbox's 10 test accounts.");
+    S.accounts = accounts.slice(0, 10).map(a => getAddress(a));
+    S.accounts.forEach((a, i) => { S.names[a.toLowerCase()] = NAMES[i]; S.byName[NAMES[i]] = a; });
+
+    msg("", "Preparing the traders (USDC, AAVE and router approvals)…");
+    const jobs = [];
+    for (const name of NAMES.slice(1)) {
+      const a = S.byName[name];
+      jobs.push(setStorage(ADDR.USDC, mapSlot(a, TOKENS.USDC.bal), FUND.USDC));
+      jobs.push(setStorage(ADDR.AAVE, mapSlot(a, TOKENS.AAVE.bal), FUND.AAVE));
+      jobs.push(setStorage(ADDR.USDC, nestedSlot(a, ADDR.V2_ROUTER, TOKENS.USDC.allow), MAX));
+      jobs.push(setStorage(ADDR.USDC, nestedSlot(a, ADDR.V3_ROUTER, TOKENS.USDC.allow), MAX));
+      jobs.push(setStorage(ADDR.AAVE, nestedSlot(a, ADDR.V2_ROUTER, TOKENS.AAVE.allow), MAX));
+    }
+    for (let i = 0; i < jobs.length; i += 10) await Promise.all(jobs.slice(i, i + 10));
+    const check = await tokenBalance("USDC", S.byName.Bob);
+    const allow = await call(ADDR.AAVE, "allowance", [S.byName.Bob, ADDR.V2_ROUTER]);
+    if (check !== FUND.USDC || allow !== MAX) throw new Error("Couldn't set up the traders' balances on this sandbox.");
+
+    S.snap = await rpc("evm_snapshot");
+    await loadPools(true);
+    S.connected = true;
+    const blockNo = parseInt(await rpc("eth_blockNumber"), 16);
+    $("netpill").textContent = `Chain ${chainId} · block ${blockNo.toLocaleString("en-GB")}`;
+    $("netpill").classList.add("ok");
+    let note = `<div class="note ok"><b>Connected.</b> Traders funded and start point saved. Pick a sequence, or make your own trade.</div>`;
+    if (forkBlock !== null && Number(forkBlock) !== LAB_BLOCK) {
+      note += `<div class="note warn">Your sandbox is forked at block ${Number(forkBlock).toLocaleString("en-GB")}, but the worksheet uses block ${LAB_BLOCK.toLocaleString("en-GB")}. Everything works, but your numbers will differ from the sheet's.</div>`;
+    }
+    $("connectMsg").innerHTML = note;
+    ["b-rewind", "b-play", "b-step", "b-quote", "b-send"].forEach(id => $(id).disabled = false);
+    await renderTraders();
+  } catch (e) {
+    console.error(e);
+    msg("bad", friendly(e));
+  } finally { setBusy(false); }
+}
+
+async function loadPools(resetHist) {
+  for (const p of POOLS) {
+    S.pools[p.id] = await readPool(p);
+    if (resetHist) S.hist[p.id] = [];
+  }
+  if (resetHist) { S.t = 0; for (const p of POOLS) S.hist[p.id].push({ t: 0, ...pick(S.pools[p.id]) }); }
+  renderAll();
+}
+const pick = st => ({ x: st.x, y: st.y, price: st.price });
+
+async function rewind() {
+  await release();
+  S.pending = [];
+  let ok = false;
+  try { ok = await rpc("evm_revert", [S.snap]); } catch { ok = false; }
+  S.snap = await rpc("evm_snapshot");
+  S.trades = []; S.lastBlock = null;
+  await loadPools(true);
+  renderMempool();
+  await renderTraders();
+  if (!ok) $("connectMsg").innerHTML = `<div class="note warn">The start point was lost (did you revert a snapshot on SandboxLab, or did the sandbox restart?). The page saved a new start point here. To get back to the worksheet's numbers, revert to <i>Clean fork</i> on SandboxLab and connect again.</div>`;
+  return ok;
+}
+
+function msg(kind, text) { $("connectMsg").innerHTML = `<div class="note ${kind}">${text}</div>`; }
+function friendly(e) {
+  const m = e.message || String(e);
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return "Couldn't reach the sandbox. Check the RPC URL, and that the sandbox is running (SandboxLab → My sandboxes → Start).";
+  return esc(m);
+}
+let lockDepth = 0;
+function setBusy(b) {
+  lockDepth = Math.max(0, lockDepth + (b ? 1 : -1));
+  S.busy = lockDepth > 0;
+  $("sec-trade").classList.toggle("busy", S.busy);
+  $("b-connect").disabled = S.busy;
+  for (const id of ["b-step", "b-rewind"]) if (S.connected) $(id).disabled = S.busy && !S.playing;
+}
+
+/* ===================================================================== */
+/*  Sequences                                                             */
+/* ===================================================================== */
+
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// Describe a trade in words for the story.
+function tradeWords(r) {
+  const p = POOL[r.pool], outSym = receiveAsset(p, r.pay);
+  if (!r.ok) return `<b>${r.trader}</b>'s swap on ${p.title} (${p.venue.split(" ·")[0]}) <b>reverted</b>: ${esc(r.reason)}`;
+  return `<b>${r.trader}</b> paid ${fmtAmt(r.amountIn, r.pay)} and got ${fmtAmt(r.amountOut, outSym)}: ${fmtPrice(r.price, r.pool)} per ${p.base}, ${pct(r.vsSpot)} worse than the spot price of ${fmtPrice(r.spot, r.pool)}.`;
+}
+
+const SEQUENCES = {
+  single: {
+    title: "One trade", pool: "v2usdc",
+    blurb: "Bob sells 100 ETH to the Uniswap v2 pool. Predict the result first.",
+    steps: () => [
+      { say: () => { const st = S.pools.v2usdc; return `The v2 pool holds <b>${fmt(st.x, 4)} ETH</b> and <b>${fmt(st.y, 2)} USDC</b>, so k = ${fmt(st.k, 0)} and the spot price is ${fmtPrice(st.price, "v2usdc")}. Bob is about to sell <b>100 ETH</b>. Work out how many USDC he gets (remember the 0.3% fee), then press Step.`; } },
+      { say: "Bob sends his swap and a block is mined.", run: async () => {
+          const [r] = await runBlock([{ trader: "Bob", pool: "v2usdc", pay: "ETH", amount: toRaw(100, 18) }]);
+          const st = S.pools.v2usdc;
+          return `${tradeWords(r)} The pool now holds ${fmt(st.x, 4)} ETH and ${fmt(st.y, 2)} USDC; k went from ${fmt(S.hist.v2usdc[0].x * S.hist.v2usdc[0].y, 0)} to ${fmt(st.k, 0)}.`;
+        } },
+    ],
+  },
+
+  retail: {
+    title: "A day of retail trading", pool: "v2usdc",
+    blurb: "24 small trades from six traders, buying and selling at random (the same for everyone).",
+    steps: () => {
+      const rnd = mulberry32(1830);
+      const traders = ["Dave", "Erin", "Frank", "Grace", "Heidi", "Ivan"];
+      const steps = [{ say: "Six traders take turns to buy and sell ETH on the v2 pool. Each trade is a few ETH. Watch the dot walk along the curve, and keep an eye on k." }];
+      for (let i = 0; i < 24; i++) {
+        const trader = traders[Math.floor(rnd() * traders.length)];
+        const sellEth = rnd() < 0.5;
+        const size = 0.5 + rnd() * rnd() * 20;   // ETH
+        steps.push({ say: null, run: async () => {
+          const amount = sellEth ? toRaw(size.toFixed(4), 18) : toRaw((size * S.pools.v2usdc.price).toFixed(2), 6);
+          const [r] = await runBlock([{ trader, pool: "v2usdc", pay: sellEth ? "ETH" : "USDC", amount }]);
+          return `Trade ${i + 1}/24 · ${tradeWords(r)}`;
+        } });
+      }
+      steps.push({ say: null, run: async () => {
+        const h = S.hist.v2usdc, a = h[0], z = S.pools.v2usdc;
+        const fees = S.trades.filter(r => r.ok && r.pool === "v2usdc").reduce((s, r) => s + toNum(r.amountIn, TOKENS[r.pay].dec) * 0.003 * (r.pay === "ETH" ? z.price : 1), 0);
+        return `<b>Done.</b> The price moved from ${fmtPrice(a.price, "v2usdc")} to ${fmtPrice(z.price, "v2usdc")}. Traders paid about <b>${fmt(fees, 0)} USDC</b> in fees, which stayed in the pool: k grew by ${pct(z.k / (a.x * a.y) - 1)}.`;
+      } , kind: "result" });
+      return steps;
+    },
+  },
+
+  whale: {
+    title: "Deep pool, thin pool", pool: "v3usdc",
+    blurb: "Judy spends 10 ETH in each of the three pools. Same trade, very different results.",
+    steps: () => {
+      const res = {};
+      const one = (pid) => ({ say: null, run: async () => {
+        if (S.selected !== pid) resetViews(); S.selected = pid; renderAll();
+        const [r] = await runBlock([{ trader: "Judy", pool: pid, pay: "ETH", amount: toRaw(10, 18) }]);
+        res[pid] = { r, tvl: tvlUsd(pid) };
+        return `${POOL[pid].title} · ${POOL[pid].venue}: ${tradeWords(r)} The price moved ${pct(Math.abs(r.after / r.spot - 1))}.`;
+      } });
+      return [
+        { say: "Judy has 10 ETH to spend, and tries each pool in turn: the deep v3 pool, the v2 pool, then the small AAVE pool. Before you press Step, guess which one will hurt most." },
+        one("v3usdc"), one("v2usdc"), one("v2aave"),
+        { say: null, kind: "result", run: async () => {
+          let rows = "";
+          for (const pid of ["v3usdc", "v2usdc", "v2aave"]) {
+            const { r, tvl } = res[pid];
+            rows += `<tr><td>${POOL[pid].title} · ${POOL[pid].venue.split(" ·")[0]}</td><td class="num">$${fmt(tvl / 1e6, 2)}m</td><td class="num">${pct(r.vsSpot)}</td><td class="num">${pct(Math.abs(r.after / r.spot - 1))}</td></tr>`;
+          }
+          return `<b>Same 10 ETH, three pools:</b><table><tr><th>Pool</th><th>Size</th><th>vs spot</th><th>Price moved</th></tr>${rows}</table>`;
+        } },
+      ];
+    },
+  },
+
+  protect: {
+    title: "Slippage protection", pool: "v2usdc",
+    blurb: "A whale trade lands just before Bob's. His minimum output decides what happens.",
+    steps: () => {
+      let quote, bobAmt = toRaw(50, 18);
+      const round = (tol) => [
+        { say: null, run: async () => {
+          if (tol !== 0.005) await rewind();
+          quote = await quoteTrade("v2usdc", "ETH", bobAmt);
+          const minOut = quote * BigInt(Math.round((1 - tol) * 10000)) / 10000n;
+          await hold();
+          await send({ trader: "Bob", pool: "v2usdc", pay: "ETH", amount: bobAmt, minOut, tip: 1, label: "Bob's swap" });
+          return `Bob wants to sell <b>50 ETH</b>. The quote is <b>${fmtAmt(quote, "USDC")}</b>. With a ${pct(tol)} tolerance his minimum is <b>${fmtAmt(minOut, "USDC")}</b>. He sends the swap; auto-mining is off, so it waits in the mempool.`;
+        } },
+        { say: null, run: async () => {
+          await send({ trader: "Judy", pool: "v2usdc", pay: "ETH", amount: toRaw(60, 18), tip: 3, label: "Judy's big sell" });
+          return `Before the next block, <b>Judy</b> sells <b>60 ETH</b> to the same pool and pays a higher priority fee (3 gwei against Bob's 1).`;
+        } },
+        { say: null, run: async () => {
+          const recs = await mine(); await release();
+          const b = recs.find(r => r.trader === "Bob");
+          return `A block is mined. Judy's trade goes first because it pays more. Then: ${tradeWords(b)}` + (b.ok ? ` That is ${pct(1 - Number(b.amountOut) / Number(quote))} less than his quote.` : "");
+        }, kind: "result" },
+      ];
+      return [
+        { say: "Round 1: Bob uses a tight 0.5% tolerance. Round 2 replays the same block with a 5% tolerance." },
+        ...round(0.005), ...round(0.05),
+      ];
+    },
+  },
+
+  sandwich: {
+    title: "A sandwich attack", pool: "v2usdc", hidden: true,
+    blurb: "Carol's bot spots Bob's pending swap and trades just before and just after it.",
+    steps: () => sandwichSteps({ trader: "Bob", pool: "v2usdc", pay: "ETH", amount: toRaw(200, 18), tol: 0.03 }),
+  },
+
+  arbitrage: {
+    title: "Arbitrage between two pools", pool: "v2usdc",
+    blurb: "Judy dumps ETH on v2, so v2 and v3 disagree. Carol buys cheap on one and sells on the other.",
+    steps: () => {
+      let a, ethOut, v3Out;
+      return [
+        { say: "Both pools trade ETH for USDC, so their prices should agree. Judy is about to sell 150 ETH on the v2 pool only." },
+        { say: null, run: async () => {
+          await runBlock([{ trader: "Judy", pool: "v2usdc", pay: "ETH", amount: toRaw(150, 18) }]);
+          const p2 = S.pools.v2usdc.price, p3 = S.pools.v3usdc.price;
+          return `Judy sold 150 ETH on v2. ETH now costs <b>${fmtPrice(p2, "v2usdc")}</b> on v2 but <b>${fmtPrice(p3, "v3usdc")}</b> on v3: a gap of ${pct(p3 / p2 - 1)}.`;
+        } },
+        { say: null, run: async () => {
+          const st = S.pools.v2usdc, p3raw = S.pools.v3usdc.price * 1e6 / 1e18;
+          const x = Number(st.r1), y = Number(st.r0);
+          // First guess treats v3 as a fixed price; then search with real v3 quotes.
+          const guess = (Math.sqrt(997000 * x * y * p3raw * (1 - POOL.v3usdc.fee)) - 1000 * y) / 997;
+          if (!(guess > 0)) return "The prices are too close for a profit after fees. Nothing to do.";
+          const profit = async amt => { const e = v2Sim(st, "USDC", amt).out; return (await quoteTrade("v3usdc", "ETH", e)) - amt; };
+          let lo = 0, hi = guess * 1.2;
+          const g = (Math.sqrt(5) - 1) / 2;
+          let c = hi - g * (hi - lo), d = lo + g * (hi - lo);
+          let fc = await profit(BigInt(Math.floor(c))), fd = await profit(BigInt(Math.floor(d)));
+          for (let i = 0; i < 28; i++) {
+            if (fc > fd) { hi = d; d = c; fd = fc; c = hi - g * (hi - lo); fc = await profit(BigInt(Math.floor(c))); }
+            else { lo = c; c = d; fc = fd; d = lo + g * (hi - lo); fd = await profit(BigInt(Math.floor(d))); }
+          }
+          a = BigInt(Math.floor((lo + hi) / 2));
+          ethOut = v2Sim(st, "USDC", a).out;
+          v3Out = await quoteTrade("v3usdc", "ETH", ethOut);
+          return `Carol works out the best size: buy ETH on v2 with <b>${fmtAmt(a, "USDC")}</b> (she gets ${fmtAmt(ethOut, "ETH", 4)}), then sell that ETH on v3 for about <b>${fmtAmt(v3Out, "USDC")}</b>. She sends both in the same block.`;
+        } },
+        { say: null, run: async () => {
+          if (!a) return "";
+          await hold();
+          await send({ trader: "Carol", pool: "v2usdc", pay: "USDC", amount: a, tip: 2, label: "Carol buys ETH on v2" });
+          await send({ trader: "Carol", pool: "v3usdc", pay: "ETH", amount: ethOut, tip: 2, label: "Carol sells ETH on v3" });
+          const recs = await mine(); await release();
+          const gas = recs.reduce((s, r) => s + r.gasEth, 0) * ethUsd();
+          const profit = toNum(recs[1].amountOut - recs[0].amountIn, 6);
+          return `Carol's two trades are mined. Profit: <b>${fmt(profit, 2)} USDC</b> (gas about $${fmt(gas, 2)}). ETH is now ${fmtPrice(S.pools.v2usdc.price, "v2usdc")} on v2 and ${fmtPrice(S.pools.v3usdc.price, "v3usdc")} on v3. Who paid for Carol's profit?`;
+        }, kind: "result" },
+      ];
+    },
+  },
+};
+
+// Sandwich: Bob's trade goes into the mempool, Carol front-runs and back-runs it.
+function sandwichSteps(t) {
+  let quote, minOut, front, back, plan;
+  const p = POOL[t.pool], other = t.pay === "ETH" ? p.token : "ETH";
+  return [
+    { say: null, run: async () => {
+      if (p.kind !== "v2") return "Carol's bot only watches the Uniswap v2 pools.";
+      quote = await quoteTrade(t.pool, t.pay, t.amount);
+      minOut = quote * BigInt(Math.round((1 - t.tol) * 10000)) / 10000n;
+      await hold();
+      await send({ trader: t.trader, pool: t.pool, pay: t.pay, amount: t.amount, minOut, tip: 2, label: `${t.trader}'s swap` });
+      return `<b>${t.trader}</b> wants to pay ${fmtAmt(t.amount, t.pay)}. The quote is <b>${fmtAmt(quote, receiveAsset(p, t.pay))}</b>; with a ${pct(t.tol)} tolerance the minimum is ${fmtAmt(minOut, receiveAsset(p, t.pay))}. The swap waits in the mempool, where everyone can see it.`;
+    } },
+    { say: null, run: async () => {
+      if (p.kind !== "v2") return "";
+      const [r0, r1] = await call(p.addr, "getReserves");
+      plan = planSandwich({ r0, r1 }, t.pay, t.amount, minOut, t.pay === "ETH" ? toRaw(9000, 18) : FUND[p.token] / 2n);
+      if (!plan) { await mine(); await release(); return `Carol's bot runs the numbers: with a minimum this tight there is <b>no profitable sandwich</b>. She leaves the trade alone, and it is mined normally.`; }
+      front = await send({ trader: "Carol", pool: t.pool, pay: t.pay, amount: plan.front, tip: 5, label: "Carol front-runs" });
+      back = await send({ trader: "Carol", pool: t.pool, pay: other, amount: plan.got, tip: 1, label: "Carol back-runs" });
+      return `Carol's bot sees the swap. It works out the biggest trade it can make first while ${t.trader} still gets his minimum: Carol pays <b>${fmtAmt(plan.front, t.pay)}</b> with a higher priority fee (5 gwei), and queues the reverse trade with a lower one (1 gwei).`;
+    } },
+    { say: null, kind: "result", run: async () => {
+      if (!plan) return "";
+      const recs = await mine(); await release();
+      const [f, b, k] = [recs.find(r => r.hash === front.hash), recs.find(r => r.trader === t.trader), recs.find(r => r.hash === back.hash)];
+      if (!b.ok) return `The block order was Carol, ${t.trader}, Carol. ${tradeWords(b)}`;
+      const loss = Number(quote - b.amountOut), lossSym = receiveAsset(p, t.pay);
+      const prof = k.ok && f.ok ? k.amountOut - f.amountIn : 0n;
+      const gas = (f.gasEth + k.gasEth) * ethUsd();
+      return `The block order: <b>Carol → ${t.trader} → Carol</b>. ${t.trader} got ${fmtAmt(b.amountOut, lossSym)}, <b>${fmt(toNum(BigInt(loss), TOKENS[lossSym].dec))} ${lossSym} less</b> than his quote. Carol ended with <b>${fmtAmt(prof, t.pay, 4)}</b> more than she started with (gas about $${fmt(gas, 2)}).`;
+    } },
+  ];
+}
+// Largest front-run that leaves the victim at or above minOut, and Carol's profit.
+function planSandwich(st, pay, amount, minOut, maxFront) {
+  const victimOut = f => v2Sim(v2Sim(st, pay, f).st, pay, amount).out;
+  if (victimOut(1n) < minOut) return null;
+  let lo = 0n, hi = maxFront;
+  if (victimOut(hi) >= minOut) lo = hi;
+  else while (hi - lo > 1n) { const mid = (lo + hi) / 2n; if (victimOut(mid) >= minOut) lo = mid; else hi = mid; }
+  if (lo === 0n) return null;
+  const s1 = v2Sim(st, pay, lo), s2 = v2Sim(s1.st, pay, amount), s3 = v2Sim(s2.st, pay === "ETH" ? "TOK" : "ETH", s1.out);
+  const profit = s3.out - lo;
+  if (profit <= 0n) return null;
+  return { front: lo, got: s1.out, profit };
+}
+
+async function runBlock(specs) {
+  await hold();
+  try { for (const s of specs) await send(s); return await mine(); }
+  finally { await release(); }
+}
+
+/* ---------- Sequence player ---------- */
+
+function selectSeq(name) {
+  if (S.playing) return;
+  S.seq = name; S.seqSteps = []; S.seqIdx = 0;
+  document.querySelectorAll(".seq").forEach(b => b.classList.toggle("active", b.dataset.seq === name));
+  $("story").innerHTML = `<div>${esc(SEQUENCES[name].blurb)}</div>`;
+  if (SEQUENCES[name].pool) { resetViews(); S.selected = SEQUENCES[name].pool; renderAll(); }
+  const u = new URL(location.href); u.searchParams.set("sequence", name); history.replaceState(null, "", u);
+}
+
+async function stepSeq() {
+  if (!S.connected || !S.seq || S.busy) return false;
+  setBusy(true);
+  try {
+    if (!S.seqSteps.length || S.seqIdx >= S.seqSteps.length) {
+      if ($("fromStart").checked) await rewind();
+      S.seqSteps = SEQUENCES[S.seq].steps(); S.seqIdx = 0;
+      $("story").innerHTML = "";
+    }
+    await runStep();
+  } finally { setBusy(false); }
+  const done = S.seqIdx >= S.seqSteps.length;
+  $("b-step").textContent = done ? "Replay" : "Step";
+  return !done;
+}
+
+async function runStep() {
+  const step = S.seqSteps[S.seqIdx++];
+  const box = document.createElement("div");
+  box.className = "now";
+  const said = typeof step.say === "function" ? step.say() : step.say;
+  if (said) box.innerHTML = said;
+  $("story").querySelectorAll(":scope > div.now").forEach(d => { d.classList.remove("now"); d.classList.add("done"); });
+  if (said || step.run) $("story").appendChild(box);
+  if (step.run) {
+    setBusy(true);
+    try {
+      const out = await step.run();
+      if (out) {
+        box.innerHTML = (said ? `${said}<br>` : "") + out;
+        if (step.kind === "result") box.className = "result now";
+      } else if (!said) box.remove();
+    } catch (e) {
+      console.error(e); await release().catch(() => {});
+      box.className = "bad"; box.innerHTML = `Something went wrong: ${friendly(e)}`;
+      S.seqIdx = S.seqSteps.length;
+    } finally { setBusy(false); }
+  }
+  box.scrollIntoView({ block: "nearest" });
+}
+
+async function play() {
+  if (S.playing) return;
+  S.playing = true; S.stopFlag = false;
+  $("b-play").disabled = true; $("b-stop").disabled = false;
+  if (S.seqIdx >= S.seqSteps.length) S.seqIdx = 0;
+  try {
+    while (!S.stopFlag) {
+      const more = await stepSeq();
+      if (!more) break;
+      await sleep(Number($("speed").value));
+    }
+  } finally {
+    S.playing = false; $("b-play").disabled = false; $("b-stop").disabled = true;
+  }
+}
+
+/* ===================================================================== */
+/*  Your trade                                                            */
+/* ===================================================================== */
+
+function fillTradeForm() {
+  $("t-trader").innerHTML = NAMES.slice(1).map(n => `<option ${n === "Bob" ? "selected" : ""}>${n}</option>`).join("");
+  $("t-pool").innerHTML = POOLS.map(p => `<option value="${p.id}">${p.title} · ${p.venue}</option>`).join("");
+  fillPay();
+}
+function fillPay() {
+  const p = POOL[$("t-pool").value];
+  $("t-pay").innerHTML = `<option value="ETH">ETH</option><option value="${p.token}">${p.token}</option>`;
+  $("t-carol").disabled = p.kind !== "v2";
+  if (p.kind !== "v2") $("t-carol").checked = false;
+}
+function readForm() {
+  const pool = $("t-pool").value, pay = $("t-pay").value;
+  const amtNum = parseFloat($("t-amount").value);
+  if (!(amtNum > 0)) throw new Error("Enter an amount greater than zero.");
+  const tol = parseFloat($("t-tol").value) / 100;
+  if (!(tol >= 0 && tol < 1)) throw new Error("Tolerance must be between 0 and 100%.");
+  return { trader: $("t-trader").value, pool, pay, amount: toRaw($("t-amount").value, TOKENS[pay].dec), tol };
+}
+async function doQuote() {
+  try {
+    const f = readForm(), p = POOL[f.pool], outSym = receiveAsset(p, f.pay);
+    const out = await quoteTrade(f.pool, f.pay, f.amount);
+    const minOut = out * BigInt(Math.round((1 - f.tol) * 10000)) / 10000n;
+    const price = execPrice(p, f.pay, f.amount, out), spot = S.pools[f.pool].price;
+    $("quote").innerHTML = `
+      <div class="kv"><span>You get (quote)</span><b>${fmtAmt(out, outSym)}</b></div>
+      <div class="kv"><span>Minimum (with ${pct(f.tol)})</span><b>${fmtAmt(minOut, outSym)}</b></div>
+      <div class="kv"><span>Spot price</span><b>${fmtPrice(spot, f.pool)}</b></div>
+      <div class="kv"><span>Price you pay</span><b>${fmtPrice(price, f.pool)}</b></div>
+      <div class="kv"><span>vs spot (fee + impact)</span><b>${pct(Math.abs(price - spot) / spot)}</b></div>`;
+    return { f, out, minOut };
+  } catch (e) { $("quote").innerHTML = `<div class="note bad">${friendly(e)}</div>`; return null; }
+}
+async function doSend() {
+  if (S.busy) return;
+  setBusy(true);
+  try { await doSendInner(); } finally { setBusy(false); }
+}
+async function doSendInner() {
+  const q = await doQuote(); if (!q) return;
+  const { f } = q;
+  $("story").innerHTML = "";
+  S.seq = null; document.querySelectorAll(".seq").forEach(b => b.classList.remove("active"));
+  S.selected = f.pool; renderAll();
+  if ($("t-carol").checked && POOL[f.pool].kind === "v2" && f.trader !== "Carol") {
+    S.seqSteps = sandwichSteps(f); S.seqIdx = 0;
+    while (S.seqIdx < S.seqSteps.length) { await runStep(); await sleep(400); }
+    S.seqSteps = []; S.seqIdx = 0; $("b-step").textContent = "Step";
+    return;
+  }
+  setBusy(true);
+  try {
+    const [r] = await runBlock([{ trader: f.trader, pool: f.pool, pay: f.pay, amount: f.amount, minOut: q.minOut }]);
+    $("story").innerHTML = `<div class="${r.ok ? "result" : "bad"}">${tradeWords(r)}</div>`;
+  } catch (e) { console.error(e); await release().catch(() => {}); $("quote").innerHTML = `<div class="note bad">${friendly(e)}</div>`; }
+  finally { setBusy(false); }
+}
+
+/* ===================================================================== */
+/*  Rendering                                                             */
+/* ===================================================================== */
+
+function renderAll() { renderTabs(); renderCurve(); renderPrice(); renderStats(); renderTape(); renderMempool(); }
+
+function renderTabs() {
+  $("tabs").innerHTML = POOLS.map(p => {
+    const st = S.pools[p.id];
+    return `<button class="tab ${S.selected === p.id ? "active" : ""}" data-pool="${p.id}">
+      <b><span class="sw" style="background:${p.colour}"></span>${p.title}</b><small>${p.venue}</small>
+      <span class="p">${st ? `1 ${p.base} = ${fmtPrice(st.price, p.id)}` : "–"}</span></button>`;
+  }).join("");
+  $("tabs").querySelectorAll(".tab").forEach(b => b.onclick = () => { if (S.selected !== b.dataset.pool) resetViews(); S.selected = b.dataset.pool; renderAll(); });
+}
+
+function niceTicks(lo, hi, n = 5) {
+  const span = hi - lo; if (!(span > 0)) return [lo];
+  const step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || mag * 10;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9 * step; v += step) out.push(v);
+  return out;
+}
+function tickFmt(v) {
+  const a = Math.abs(v);
+  if (a >= 1e6) return `${fmt(v / 1e6, a >= 1e7 ? 0 : 1)}m`;
+  if (a >= 1e4) return `${fmt(v / 1e3, 0)}k`;
+  return fmt(v, a >= 100 ? 0 : a >= 1 ? 1 : 4);
+}
+// Labels for a set of ticks with just enough decimals to tell them apart.
+function tickLabels(ticks) {
+  const a = Math.max(...ticks.map(Math.abs));
+  const [div, suf] = a >= 1e6 ? [1e6, "m"] : a >= 1e4 ? [1e3, "k"] : [1, ""];
+  for (let dp = 0; dp <= 8; dp++) {
+    const l = ticks.map(v => fmt(v / div, dp) + suf);
+    if (new Set(l).size === l.length) return l;
+  }
+  return ticks.map(v => fmt(v / div, 8) + suf);
+}
+function el(tag, attrs, text) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function renderCurve() {
+  const svg = $("curve"); svg.innerHTML = "";
+  const p = POOL[S.selected], st = S.pools[p.id], h = S.hist[p.id] || [];
+  $("curveHint").textContent = p.kind === "v3"
+    ? `x · y = k with the pool's virtual reserves (v3: valid inside the current price range)`
+    : `x = ${p.base} reserve, y = ${p.quote} reserve, x · y = k`;
+  if (!st) { svg.appendChild(el("text", { x: 310, y: 180, "text-anchor": "middle" }, "Connect to your fork to see the pool.")); return; }
+  const W = 620, H = 360, L = 70, R = 20, T = 18, B = 44;
+  const xs = h.map(q => q.x).concat(st.x);
+  let x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const padX = Math.max((x1 - x0) * 0.35, st.x * 0.12);
+  x0 = Math.max(st.x * 0.05, x0 - padX); x1 = x1 + padX;
+  const k = st.k;
+  let y0 = k / x1, y1 = k / x0;
+  if (VIEW.curve) ({ x0, x1, y0, y1 } = VIEW.curve);
+  CHART.curve = { x0, x1, y0, y1, L, R, T, B, W, H, kind: "curve", pool: p.id };
+  const sx = v => L + (v - x0) / (x1 - x0) * (W - L - R);
+  const sy = v => H - B - (v - y0) / (y1 - y0) * (H - T - B);
+  const xt = niceTicks(x0, x1), xl = tickLabels(xt);
+  xt.forEach((v, i) => {
+    svg.appendChild(el("line", { x1: sx(v), x2: sx(v), y1: T, y2: H - B, class: "grid" }));
+    svg.appendChild(el("text", { x: sx(v), y: H - B + 16, "text-anchor": "middle" }, xl[i]));
+  });
+  const yt = niceTicks(y0, y1), yl = tickLabels(yt);
+  yt.forEach((v, i) => {
+    svg.appendChild(el("line", { x1: L, x2: W - R, y1: sy(v), y2: sy(v), class: "grid" }));
+    svg.appendChild(el("text", { x: L - 6, y: sy(v) + 4, "text-anchor": "end" }, yl[i]));
+  });
+  svg.appendChild(el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "axis" }));
+  svg.appendChild(el("line", { x1: L, x2: L, y1: T, y2: H - B, class: "axis" }));
+  svg.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, "text-anchor": "middle", class: "big" }, `${p.base} in the pool (x)`));
+  svg.appendChild(el("text", { x: 14, y: (T + H - B) / 2, "text-anchor": "middle", class: "big", transform: `rotate(-90 14 ${(T + H - B) / 2})` }, `${p.quote} in the pool (y)`));
+  const plot = plotGroup(svg, "curve", L, T, W - L - R, H - T - B);
+  // the curve
+  let d = "";
+  for (let i = 0; i <= 240; i++) { const xv = Math.max(x0, 1e-12) + (x1 - Math.max(x0, 1e-12)) * i / 240; d += `${i ? "L" : "M"}${sx(xv).toFixed(1)},${sy(k / xv).toFixed(1)}`; }
+  plot.appendChild(el("path", { d, fill: "none", stroke: p.colour, "stroke-width": 2.5 }));
+  // history
+  h.forEach((q, i) => { if (i < h.length - 1) plot.appendChild(el("circle", { cx: sx(q.x), cy: sy(q.y), r: 3, fill: p.colour, opacity: .3 })); });
+  if (h.length > 1) {
+    const a = h[h.length - 2], b = h[h.length - 1];
+    plot.appendChild(el("line", { x1: sx(a.x), y1: sy(a.y), x2: sx(b.x), y2: sy(b.y), stroke: "var(--amber)", "stroke-width": 2.5, "stroke-dasharray": "5 3" }));
+  }
+  // tangent = spot price
+  const tx = st.x, ty = st.y, dx = (x1 - x0) * 0.16, slope = -ty / tx;
+  plot.appendChild(el("line", { x1: sx(tx - dx), y1: sy(ty - slope * dx), x2: sx(tx + dx), y2: sy(ty + slope * dx), stroke: "var(--navy)", "stroke-width": 1, "stroke-dasharray": "3 3" }));
+  plot.appendChild(el("line", { x1: sx(tx), x2: sx(tx), y1: sy(ty), y2: H - B, stroke: "var(--navy-2)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+  plot.appendChild(el("line", { x1: L, x2: sx(tx), y1: sy(ty), y2: sy(ty), stroke: "var(--navy-2)", "stroke-width": 1, "stroke-dasharray": "2 3" }));
+  plot.appendChild(el("circle", { cx: sx(tx), cy: sy(ty), r: 7, fill: "#fff", stroke: p.colour, "stroke-width": 3 }));
+  const lx = sx(tx) + 12, anchor = lx > W - 200 ? "end" : "start", lxx = anchor === "end" ? sx(tx) - 12 : lx;
+  plot.appendChild(el("text", { x: lxx, y: sy(ty) - 22, "text-anchor": anchor, class: "lbl" }, `x = ${fmt(tx, tx > 100 ? 1 : 3)} ${p.base}`));
+  plot.appendChild(el("text", { x: lxx, y: sy(ty) - 8, "text-anchor": anchor, class: "lbl" }, `y = ${fmt(ty, ty > 100 ? 0 : 3)} ${p.quote}`));
+  svg.appendChild(el("text", { x: W - R, y: T + 12, "text-anchor": "end", class: "lbl" }, `k = ${tickFmt(k)}   slope (spot price) = ${fmtPrice(st.price, p.id)}`));
+  CHART.curve.k = k; CHART.curve.base = p.base; CHART.curve.quote = p.quote;
+  svg.appendChild(el("g", { class: "hov" }));
+  markZoomed("curve");
+}
+
+function renderPrice() {
+  const svg = $("price"); svg.innerHTML = "";
+  const p = POOL[S.selected];
+  const group = POOLS.filter(q => q.base === p.base && q.quote === p.quote);
+  $("priceHint").textContent = group.length > 1 ? `1 ${p.base} in ${p.quote} after each trade, on both ${p.title} pools` : `1 ${p.base} in ${p.quote} after each trade`;
+  if (!S.pools[p.id]) return;
+  const W = 620, H = 360, L = 70, R = 20, T = 26, B = 44;
+  const series = group.map(q => ({ q, h: S.hist[q.id] || [] }));
+  const tMax = Math.max(1, S.t);
+  const ps = series.flatMap(s => s.h.map(v => v.price));
+  let lo = Math.min(...ps), hi = Math.max(...ps);
+  const pad = Math.max((hi - lo) * 0.15, hi * 0.002);
+  lo -= pad; hi += pad;
+  let t0 = 0, t1 = tMax;
+  if (VIEW.price) ({ x0: t0, x1: t1, y0: lo, y1: hi } = VIEW.price);
+  CHART.price = { x0: t0, x1: t1, y0: lo, y1: hi, L, R, T, B, W, H, kind: "price", pool: p.id, series };
+  const sx = v => L + (v - t0) / (t1 - t0) * (W - L - R);
+  const sy = v => H - B - (v - lo) / (hi - lo) * (H - T - B);
+  if (t1 - t0 < 40) for (let v = Math.ceil(t0); v <= t1; v += Math.max(1, Math.round((t1 - t0) / 8))) {
+    svg.appendChild(el("text", { x: sx(v), y: H - B + 16, "text-anchor": "middle" }, String(v)));
+  } else for (const v of niceTicks(t0, t1)) svg.appendChild(el("text", { x: sx(v), y: H - B + 16, "text-anchor": "middle" }, tickFmt(v)));
+  const pt = niceTicks(lo, hi), pl = tickLabels(pt);
+  pt.forEach((v, i) => {
+    svg.appendChild(el("line", { x1: L, x2: W - R, y1: sy(v), y2: sy(v), class: "grid" }));
+    svg.appendChild(el("text", { x: L - 6, y: sy(v) + 4, "text-anchor": "end" }, pl[i]));
+  });
+  svg.appendChild(el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "axis" }));
+  svg.appendChild(el("line", { x1: L, x2: L, y1: T, y2: H - B, class: "axis" }));
+  svg.appendChild(el("text", { x: (L + W - R) / 2, y: H - 8, "text-anchor": "middle", class: "big" }, "Trades played (all pools)"));
+  svg.appendChild(el("text", { x: 14, y: (T + H - B) / 2, "text-anchor": "middle", class: "big", transform: `rotate(-90 14 ${(T + H - B) / 2})` }, `Price of 1 ${p.base} (${p.quote})`));
+  const plot = plotGroup(svg, "price", L, T, W - L - R, H - T - B);
+  let lx = L;
+  for (const { q, h } of series) {
+    if (!h.length) continue;
+    let d = `M${sx(h[0].t)},${sy(h[0].price)}`;
+    for (let i = 1; i < h.length; i++) d += `H${sx(h[i].t)}V${sy(h[i].price)}`;
+    d += `H${sx(tMax)}`;
+    const sel = q.id === p.id;
+    plot.appendChild(el("path", { d, fill: "none", stroke: q.colour, "stroke-width": sel ? 2.5 : 1.8, "stroke-dasharray": sel ? "" : "6 4" }));
+    for (const v of h.slice(1)) plot.appendChild(el("circle", { cx: sx(v.t), cy: sy(v.price), r: sel ? 3 : 2, fill: q.colour }));
+    svg.appendChild(el("rect", { x: lx, y: 6, width: 12, height: 3, fill: q.colour }));
+    const label = el("text", { x: lx + 16, y: 11 }, `${q.venue.split(" ·")[0]}: ${fmtPrice(S.pools[q.id].price, q.id)}`);
+    svg.appendChild(label);
+    lx += 210;
+  }
+  svg.appendChild(el("g", { class: "hov" }));
+  markZoomed("price");
+}
+
+/* ---------- Chart interaction: zoom, pan, hover ---------- */
+
+const VIEW = { curve: null, price: null };   // set when the user has zoomed or panned
+const CHART = { curve: null, price: null };  // domain and layout of the last render
+function plotGroup(svg, id, x, y, w, h) {
+  const cp = el("clipPath", { id: `clip-${id}` });
+  cp.appendChild(el("rect", { x, y, width: w, height: h }));
+  svg.appendChild(cp);
+  const g = el("g", { "clip-path": `url(#clip-${id})` });
+  svg.appendChild(g);
+  return g;
+}
+function markZoomed(id) {
+  document.querySelector(`.zoomBtns[data-chart="${id}"] [data-z="reset"]`)?.classList.toggle("zoomed", !!VIEW[id]);
+}
+function renderChart(id) { if (id === "curve") renderCurve(); else renderPrice(); }
+function resetViews() { VIEW.curve = null; VIEW.price = null; }
+// Pointer position in data units of a chart.
+function toData(id, evt) {
+  const svg = $(id), c = CHART[id];
+  const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+  const v = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const fx = (v.x - c.L) / (c.W - c.L - c.R), fy = (c.H - c.B - v.y) / (c.H - c.T - c.B);
+  return { vx: v.x, vy: v.y, fx, fy, x: c.x0 + fx * (c.x1 - c.x0), y: c.y0 + fy * (c.y1 - c.y0), inside: fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1 };
+}
+function zoomAt(id, fx, fy, factor, xOnly) {
+  const c = CHART[id]; if (!c) return;
+  const ax = c.x0 + fx * (c.x1 - c.x0), ay = c.y0 + fy * (c.y1 - c.y0);
+  let x0 = ax - (ax - c.x0) * factor, x1 = ax + (c.x1 - ax) * factor;
+  let y0 = c.y0, y1 = c.y1;
+  if (!xOnly) { y0 = ay - (ay - c.y0) * factor; y1 = ay + (c.y1 - ay) * factor; }
+  if (id === "curve") { x0 = Math.max(x0, 1e-9); y0 = Math.max(y0, 0); }
+  VIEW[id] = { x0, x1, y0, y1 };
+  renderChart(id);
+}
+function attachChart(id) {
+  const svg = $(id);
+  let drag = null;
+  svg.addEventListener("wheel", e => {
+    if (!CHART[id]) return;
+    e.preventDefault();
+    const d = toData(id, e);
+    zoomAt(id, Math.min(1, Math.max(0, d.fx)), Math.min(1, Math.max(0, d.fy)), e.deltaY < 0 ? 1 / 1.15 : 1.15, e.shiftKey);
+  }, { passive: false });
+  svg.addEventListener("pointerdown", e => {
+    if (!CHART[id] || e.button !== 0) return;
+    const c = CHART[id];
+    drag = { id: e.pointerId, start: toData(id, e), dom: { x0: c.x0, x1: c.x1, y0: c.y0, y1: c.y1 } };
+    svg.setPointerCapture(e.pointerId); svg.classList.add("dragging");
+  });
+  svg.addEventListener("pointermove", e => {
+    if (!CHART[id]) return;
+    if (drag && drag.id === e.pointerId) {
+      const c = CHART[id], now = toData(id, e);
+      const dfx = now.fx - drag.start.fx, dfy = now.fy - drag.start.fy;
+      const w = drag.dom.x1 - drag.dom.x0, h = drag.dom.y1 - drag.dom.y0;
+      if (Math.abs(dfx) + Math.abs(dfy) > 0.002) {
+        VIEW[id] = { x0: drag.dom.x0 - dfx * w, x1: drag.dom.x1 - dfx * w, y0: drag.dom.y0 - dfy * h, y1: drag.dom.y1 - dfy * h };
+        renderChart(id);
+      }
+      return;
+    }
+    hover(id, e);
+  });
+  const end = e => { if (drag && drag.id === e.pointerId) { drag = null; svg.classList.remove("dragging"); } };
+  svg.addEventListener("pointerup", end); svg.addEventListener("pointercancel", end);
+  svg.addEventListener("pointerleave", () => { const g = svg.querySelector(".hov"); if (g) g.innerHTML = ""; });
+  svg.addEventListener("dblclick", () => { VIEW[id] = null; renderChart(id); });
+  document.querySelectorAll(`.zoomBtns[data-chart="${id}"] button`).forEach(b => b.onclick = () => {
+    if (!CHART[id]) return;
+    if (b.dataset.z === "reset") { VIEW[id] = null; renderChart(id); }
+    else zoomAt(id, 0.5, 0.5, b.dataset.z === "in" ? 1 / 1.4 : 1.4, false);
+  });
+}
+// Crosshair and readout.
+function hover(id, e) {
+  const svg = $(id), g = svg.querySelector(".hov"), c = CHART[id];
+  if (!g || !c) return;
+  g.innerHTML = "";
+  const d = toData(id, e);
+  if (!d.inside) return;
+  const sx = v => c.L + (v - c.x0) / (c.x1 - c.x0) * (c.W - c.L - c.R);
+  const sy = v => c.H - c.B - (v - c.y0) / (c.y1 - c.y0) * (c.H - c.T - c.B);
+  let px, py, lines;
+  if (id === "curve") {
+    const x = d.x, y = c.k / x;
+    px = sx(x); py = sy(y);
+    if (py < c.T || py > c.H - c.B) return;
+    lines = [`x = ${fmt(x, x > 100 ? 2 : 4)} ${c.base}`, `y = ${fmt(y, y > 100 ? 0 : 4)} ${c.quote}`, `price here: ${fmt(y / x, c.quote === "USDC" ? 2 : 5)} ${c.quote}`];
+  } else {
+    let best = null;
+    for (const { q, h } of c.series) for (const v of h) {
+      const dist = Math.hypot(sx(v.t) - d.vx, (sy(v.price) - d.vy) * 0.5);
+      if (!best || dist < best.dist) best = { dist, v, q };
+    }
+    if (!best || best.dist > 60) return;
+    px = sx(best.v.t); py = sy(best.v.price);
+    const tr = best.v.t ? S.trades.find(r => r.pool === best.q.id && r.ok && Math.abs(r.after - best.v.price) < 1e-9 * best.v.price + 1e-12) : null;
+    lines = [best.v.t ? `after trade point ${best.v.t}` : "start point", `${best.q.venue.split(" ·")[0]}: ${fmtPrice(best.v.price, best.q.id)}`];
+    if (tr) lines.push(`${tr.trader}, block ${tr.block}`);
+  }
+  g.appendChild(el("line", { x1: px, x2: px, y1: c.T, y2: c.H - c.B, stroke: "#9a9cb3", "stroke-width": 1, "stroke-dasharray": "3 3" }));
+  g.appendChild(el("line", { x1: c.L, x2: c.W - c.R, y1: py, y2: py, stroke: "#9a9cb3", "stroke-width": 1, "stroke-dasharray": "3 3" }));
+  g.appendChild(el("circle", { cx: px, cy: py, r: 5, fill: "var(--amber)", stroke: "#fff", "stroke-width": 1.5 }));
+  const bw = 190, bh = 16 * lines.length + 10;
+  let bx = px + 12, by = py - bh - 10;
+  if (bx + bw > c.W - c.R) bx = px - bw - 12;
+  if (by < c.T) by = py + 12;
+  g.appendChild(el("rect", { x: bx, y: by, width: bw, height: bh, rx: 6, fill: "rgba(255,255,255,.96)", stroke: "#d6d8e4" }));
+  lines.forEach((t, i) => g.appendChild(el("text", { x: bx + 9, y: by + 18 + i * 16 }, t)));
+}
+
+function renderStats() {
+  const p = POOL[S.selected], st = S.pools[p.id];
+  if (!st) { $("stats").innerHTML = ""; return; }
+  const h0 = S.hist[p.id][0];
+  const move = st.price / h0.price - 1;
+  const cards = [];
+  if (p.kind === "v2") {
+    cards.push([`${p.base} reserve (x)`, fmt(st.x, 4), "held by the pool"]);
+    cards.push([`${p.quote} reserve (y)`, fmt(st.y, p.quote === "USDC" ? 2 : 4), "held by the pool"]);
+  } else {
+    cards.push(["ETH held", fmt(st.ethH, 2), `virtual x: ${fmt(st.x, 2)}`]);
+    cards.push(["USDC held", fmt(st.tokH, 0), `virtual y: ${fmt(st.y, 0)}`]);
+  }
+  cards.push([`Spot price (y / x)`, fmtPrice(st.price, p.id), `1 ${p.base}`]);
+  cards.push(["k = x · y", tickFmt(st.k), `${move === 0 ? "at the start point" : `${k0change(p.id)} since the start`}`]);
+  cards.push(["Price since start", `${move >= 0 ? "+" : ""}${pct(move)}`, `from ${fmtPrice(h0.price, p.id)}`]);
+  cards.push(["Pool size", `$${fmt(tvlUsd(p.id) / 1e6, 2)}m`, "both sides, at the v3 ETH price"]);
+  $("stats").innerHTML = cards.map(([a, b, c]) => `<div class="stat"><span>${a}</span><b>${b}</b><small>${c}</small></div>`).join("");
+}
+function k0change(id) {
+  const h0 = S.hist[id][0], st = S.pools[id];
+  const c = st.k / (h0.x * h0.y) - 1;
+  return `${c >= 0 ? "+" : ""}${pct(c)}`;
+}
+
+function renderTape() {
+  const rows = S.trades.slice().reverse().map((r, i) => {
+    const p = POOL[r.pool], outSym = receiveAsset(p, r.pay);
+    const what = r.ok ? `${fmtAmt(r.amountIn, r.pay)} → ${fmtAmt(r.amountOut, outSym)}` : `${fmtAmt(r.amountIn, r.pay)} → <b>reverted</b>: ${esc(r.reason)}`;
+    return `<tr class="${r.ok ? "" : "bad"} ${i === 0 ? "new" : ""}">
+      <td class="num">${r.n}</td><td class="num">${r.block}${r.idx ? `·${r.idx}` : ""}</td>
+      <td><span class="name">${r.trader}</span></td>
+      <td><span class="tab-sw" style="color:${p.colour}">■</span> ${p.title} <small style="color:var(--navy-2)">${p.venue.split(" ·")[0]}</small></td>
+      <td>${what}</td>
+      <td class="num">${fmtPrice(r.spot, r.pool)}</td>
+      <td class="num">${r.ok ? fmtPrice(r.price, r.pool) : "–"}</td>
+      <td class="num">${r.ok ? pct(r.vsSpot) : "–"}</td>
+      <td><button class="hash" data-h="${r.hash}" title="Copy the transaction hash">${shortHash(r.hash)}</button></td></tr>`;
+  }).join("");
+  $("tape").innerHTML = rows;
+  $("tapeEmpty").style.display = S.trades.length ? "none" : "block";
+  $("tape").querySelectorAll(".hash").forEach(b => b.onclick = () => { navigator.clipboard?.writeText(b.dataset.h); b.textContent = "copied"; setTimeout(() => b.textContent = shortHash(b.dataset.h), 1200); });
+}
+
+function renderMempool() {
+  const box = $("mempool");
+  const describe = it => {
+    const p = POOL[it.pool];
+    return `<b class="name">${it.trader}</b> pays ${fmtAmt(it.amount, it.pay)} on ${p.title} ${p.venue.split(" ·")[0]}${it.label ? ` <span class="role">(${esc(it.label)})</span>` : ""}`;
+  };
+  let html = "";
+  if (S.pending.length) {
+    html += `<div class="role">Waiting in the mempool (not in a block yet):</div>`;
+    html += S.pending.map(it => `<div class="pending"><span class="pos">…</span><span>${describe(it)}</span><span class="tip">tip ${it.tipGwei} gwei</span></div>`).join("");
+  }
+  if (S.lastBlock && S.lastBlock.items.length) {
+    html += `<div class="role" style="margin-top:6px">Block ${S.lastBlock.number} put them in this order:</div>`;
+    html += S.lastBlock.items.map((r, i) => `<div class="pending ${r.ok ? "mined" : "failed"}"><span class="pos">${i + 1}</span><span>${describe({ ...r, amount: r.amountIn })}${r.ok ? "" : " · <b>reverted</b>"}</span><span class="tip">tip ${r.tipGwei} gwei</span></div>`).join("");
+  }
+  box.innerHTML = html || `<div class="empty">Transactions waiting to be mined appear here, then the order the block put them in.</div>`;
+}
+
+async function renderTraders() {
+  if (!S.connected && !S.accounts.length) return;
+  const rows = [];
+  for (const name of NAMES) {
+    const a = S.byName[name];
+    const [e, u, v, w] = await Promise.all([ethBalance(a), tokenBalance("USDC", a), tokenBalance("AAVE", a), tokenBalance("WETH", a)]);
+    rows.push(`<tr><td><span class="name">${name}</span><br><span class="role">${ROLES[name]}</span></td>
+      <td class="num">${fmt(toNum(e, 18), 2)}</td><td class="num">${tickFmt(toNum(u, 6))}</td>
+      <td class="num">${fmt(toNum(v, 18), 1)}</td><td class="num">${fmt(toNum(w, 18), 2)}</td></tr>`);
+  }
+  $("traders").innerHTML = rows.join("");
+}
+
+/* ===================================================================== */
+/*  Wire up                                                               */
+/* ===================================================================== */
+
+const SHOW_MEV = new URLSearchParams(location.search).has("mev");   // front-running demo, not used in the 2026-27 sheet
+if (SHOW_MEV) $("t-carol-row").hidden = false;
+$("seqs").innerHTML = Object.entries(SEQUENCES).filter(([k, s]) => !s.hidden || SHOW_MEV || new URLSearchParams(location.search).get("sequence") === k).map(([k, s]) =>
+  `<button class="seq" data-seq="${k}"><b>${s.title}</b><code>?sequence=${k}</code><small>${esc(s.blurb)}</small></button>`).join("");
+document.querySelectorAll(".seq").forEach(b => b.onclick = () => selectSeq(b.dataset.seq));
+$("b-connect").onclick = connect;
+$("b-rewind").onclick = async () => { if (S.busy || S.playing) return; setBusy(true); try { await rewind(); $("story").innerHTML = ""; S.seqIdx = 0; $("b-step").textContent = "Step"; } finally { setBusy(false); } };
+$("b-step").onclick = () => { if (!S.playing) stepSeq(); };
+$("b-play").onclick = play;
+$("b-stop").onclick = () => { S.stopFlag = true; };
+$("t-pool").onchange = () => { fillPay(); $("quote").innerHTML = ""; };
+$("b-quote").onclick = doQuote;
+$("b-send").onclick = doSend;
+fillTradeForm();
+attachChart("curve"); attachChart("price");
+$("rpc").value = sessionStorage.getItem("amm-rpc") || "";
+const qs = new URLSearchParams(location.search);
+selectSeq(SEQUENCES[qs.get("sequence")] ? qs.get("sequence") : "single");
+renderAll();
+// Exposed for testing in the browser console.
+window.__amm = { S, rpc, SEQUENCES, stepSeq, rewind };
+</script>
+</body>
+</html>
