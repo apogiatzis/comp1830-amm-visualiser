@@ -105,7 +105,7 @@
     <div class="tree" id="tree"></div>
   </div>
   <div class="card">
-    <div class="cardHead"><h2>ETH balance changes</h2><span class="hint">Accounts whose ETH balance changed in this transaction (before → after), gas fee included.</span></div>
+    <div class="cardHead"><h2>Balance changes</h2><span class="hint">Every ETH and token balance this transaction changed (before → after), read from the storage it changed. ETH includes the gas fee; the part of the fee that is burnt goes to no account.</span></div>
     <div id="balances"></div>
   </div>
   <footer id="footer"></footer>
@@ -288,12 +288,19 @@ function render(d) {
   $('tree').innerHTML = frameHtml(d, d.calls, roles);
 
   const pre = d.stateDiff.pre || {}, post = d.stateDiff.post || {};
-  const rows = Object.keys(post).filter((a) => post[a].balance !== undefined && pre[a] && pre[a].balance !== undefined)
-    .map((a) => ({ a, before: BigInt(pre[a].balance), after: BigInt(post[a].balance) }))
-    .filter((r) => r.before !== r.after)
-    .sort((x, y) => (y.after - y.before > x.after - x.before ? 1 : -1));
-  $('balances').innerHTML = `<table><tr><th>Account</th><th class="num">Before (ETH)</th><th class="num">After (ETH)</th><th class="num">Change (ETH)</th></tr>` +
-    rows.map((r) => { const ch = r.after - r.before; return `<tr><td>${r.a === lower(bl.miner) ? addr(r.a) + ' <i>(block fee recipient)</i>' : addr(r.a, roles)}</td><td class="num">${units(r.before, 18)}</td><td class="num">${units(r.after, 18)}</td><td class="num ${ch > 0n ? 'up' : 'down'}">${ch > 0n ? '+' : ''}${units(ch, 18)}</td></tr>`; }).join('') + '</table>';
+  const eth = Object.keys(post).filter((a) => post[a].balance !== undefined && pre[a] && pre[a].balance !== undefined)
+    .map((a) => ({ a: lower(a), sym: 'ETH', decimals: 18, before: BigInt(pre[a].balance), after: BigInt(post[a].balance) }))
+    .filter((r) => r.before !== r.after);
+  const toks = (d.tokenBalances || []).map((r) => { const t = tokenOf(d, r.token); return { a: lower(r.account), sym: t.symbol, decimals: t.decimals, before: BigInt(r.before), after: BigInt(r.after) }; });
+  // One group per account: the sender first, the block fee recipient last, the rest by address.
+  const rank = (a) => (a === lower(tx.from) ? 0 : a === lower(bl.miner) ? 2 : 1);
+  const rows = [...eth, ...toks].sort((x, y) => rank(x.a) - rank(y.a) || (x.a < y.a ? -1 : x.a > y.a ? 1 : 0) || (x.sym === 'ETH' ? -1 : y.sym === 'ETH' ? 1 : x.sym < y.sym ? -1 : 1));
+  $('balances').innerHTML = `<table><tr><th>Account</th><th>Asset</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th></tr>` +
+    rows.map((r, i) => {
+      const ch = r.after - r.before, first = i === 0 || rows[i - 1].a !== r.a;
+      const who = first ? (r.a === lower(bl.miner) ? addr(r.a) + ' <i>(block fee recipient)</i>' : addr(r.a, roles)) : '';
+      return `<tr><td>${who}</td><td>${esc(r.sym)}</td><td class="num">${units(r.before, r.decimals)}</td><td class="num">${units(r.after, r.decimals)}</td><td class="num ${ch > 0n ? 'up' : 'down'}">${ch > 0n ? '+' : ''}${units(ch, r.decimals)}</td></tr>`;
+    }).join('') + '</table>';
   $('footer').innerHTML = `Recorded from Ethereum mainnet on ${esc(d.captured)} with <code>debug_traceTransaction</code> (call tracer with events, and pre/post state). Check any of it on <a href="https://etherscan.io/tx/${d.hash}" target="_blank" rel="noopener">Etherscan</a>.`;
 }
 
