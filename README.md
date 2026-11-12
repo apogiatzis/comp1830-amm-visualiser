@@ -36,6 +36,21 @@ Both charts are interactive: mouse wheel zooms around the cursor (Shift: horizon
 on the curve, x, y and the price at that point; on the price chart, the nearest trade point, its price, trader
 and block. A zoomed view is kept as new trades arrive (⟲ turns amber); switching pool resets it.
 
+## Real transactions (Lab 6)
+
+`traces.html` shows two real mainnet transactions from 29 October 2026 for Lab 6, Exercises 1.3 and 1.4:
+their swaps, token and ETH transfers, an expandable call trace with each call's events, and ETH balance
+changes. Link straight to one with `?tx=ex-1-3` or `?tx=ex-1-4`. Nothing runs on a sandbox: the data was
+recorded once into `traces/*.json` (about 200 KB each) by
+
+    python3 tools/capture_trace.py <tx hash> traces/<name>.json [rpc url]
+
+which calls `debug_traceTransaction` (call tracer with events, and the pre/post state) on an endpoint that
+can trace those blocks (dRPC's free `https://eth.drpc.org` does). Replaying these blocks in SandboxLab
+instead would keep the opcode steps of every transaction in the block, about 826 MB for Exercise 1.4.
+Only public contracts are labelled; senders, bot contracts and the fee recipient are left as addresses,
+because the worksheet asks students to work out who they are.
+
 ## How it works
 
 - On **Connect** the page funds traders 1–9 with USDC and AAVE and sets router allowances by writing token
